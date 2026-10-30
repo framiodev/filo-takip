@@ -239,6 +239,45 @@ check("harita sayfası", "leaflet" in hp_ and 'id="map"' in hp_)
 gun_ = urllib.request.urlopen(f"http://127.0.0.1:{wp}/gun?tarih=2026-11-03").read().decode()
 check("gün özeti açılıyor", "<h1>Gün özeti" in gun_ and "Hata:" not in gun_)
 check("araç durum rozeti", "Listede yok" in page4 or "Şu an hatta" in page4)
+
+# --- yeni özellikler: ilk hatlar, CSV, geçmiş kartı, harita filtreleri, şehir seçimi
+_base = f"http://127.0.0.1:{wp}"
+_ht = urllib.request.urlopen(_base + "/hatlar?tarih=2026-11-03").read().decode()
+check("ilk hatlar sayfası", "<h1>İlk 50 hat" in _ht and "Hata:" not in _ht and "<b>481</b>" in _ht)
+_cg = urllib.request.urlopen(_base + "/csv/gun?tarih=2026-11-03")
+_cgb = _cg.read()
+check("csv/gun: dosya, BOM ve başlık", _cg.headers.get_content_type() == "text/csv" and _cgb.startswith(b"\xef\xbb\xbf")
+      and b"tarih;hat;plaka;filo_no" in _cgb and b"attachment" in _cg.headers.get("Content-Disposition", "").encode())
+_ca = urllib.request.urlopen(_base + "/csv/arac?q=09-524&tarih=2026-11-03&gun=7").read().decode("utf-8-sig")
+check("csv/arac: araç satırları", "09-524" in _ca and _ca.splitlines()[0].startswith("tarih;plaka;filo_no"))
+_ch = urllib.request.urlopen(_base + "/csv/hatlar?tarih=2026-11-03&gun=7").read().decode("utf-8-sig")
+check("csv/hatlar", _ch.splitlines()[0].startswith("sira;hat;hat_adi") and "481" in _ch)
+import ego_web as _ew2
+check("csv formül enjeksiyonu korunuyor", _ew2.csv_cell("=1+1").startswith("'") and _ew2.csv_cell("@x").startswith("'")
+      and _ew2.csv_cell("-5") == "-5" and _ew2.csv_cell("09-524") == "09-524")
+check("geçmiş kartı ve gün gezgini", "Son 14 gün" in page4 and "Önceki gün" in page4 and "/csv/arac?q=" in page4)
+_hp2 = urllib.request.urlopen(_base + "/harita").read().decode()
+check("harita: işletme/tip/tam hat filtreleri ve kümeleme", all(x in _hp2 for x in ('id="op"', 'id="tip"', 'id="hat"', "markercluster")))
+check("api: tip alanı", all("tp" in a for a in _api_t["araclar"])) if (_api_t := _j.loads(urllib.request.urlopen(_base + "/api/araclar?saat=720").read().decode())) else None
+_rd = urllib.request.build_opener(type("NR", (urllib.request.HTTPRedirectHandler,), {"redirect_request": lambda *a, **k: None}))
+_s0 = urllib.request.urlopen(_base + "/").read().decode()
+check("şehir seçimi: çerezsiz açılışta soruluyor", "Hangi şehrin arşivini" in _s0 and "Yakında" in _s0 and "İstanbul" in _s0 and "<nav></nav>" in _s0)
+_sq = urllib.request.urlopen(_base + "/?q=09-524&tarih=2026-11-03").read().decode()
+check("şehir seçimi: paylaşılan sorgu bağlantısı çerezsiz de çalışıyor", "Sefer 1" in _sq)
+try:
+    _rd.open(_base + "/sehir/sec?s=ankara"); check("şehir seç (Ankara) yönlendiriyor", False)
+except urllib.error.HTTPError as _e:
+    _sc = _e.headers.get("Set-Cookie", "")
+    check("şehir seç (Ankara): çerez + yönlendirme", _e.code == 303 and "sehir=ankara" in _sc and "Max-Age" in _sc and _e.headers.get("Location") == "/")
+try:
+    _rd.open(_base + "/sehir/sec?s=istanbul"); check("henüz hazır olmayan şehir", False)
+except urllib.error.HTTPError as _e:
+    check("henüz hazır olmayan şehir seçilemiyor", _e.code == 303 and "Set-Cookie" not in _e.headers and "yakinda=istanbul" in _e.headers.get("Location", ""))
+_rq = urllib.request.Request(_base + "/"); _rq.add_header("Cookie", "sehir=ankara")
+_s1 = urllib.request.urlopen(_rq).read().decode()
+check("şehir seçildikten sonra sorgu sayfası", "<h1>Araç sorgula" in _s1 and "Ankara ▾" in _s1)
+_rq = urllib.request.Request(_base + "/"); _rq.add_header("Cookie", "sehir=gecersiz")
+check("geçersiz şehir çerezi yok sayılıyor", "Hangi şehrin arşivini" in urllib.request.urlopen(_rq).read().decode())
 _cj = _j.loads(urllib.request.urlopen(f"http://127.0.0.1:{wp}/api/canli?hat=481").read().decode())
 check("anlık hat sorgusu", len(_cj.get("araclar", [])) >= 1 and "la" in _cj["araclar"][0])
 _cx = _j.loads(urllib.request.urlopen(f"http://127.0.0.1:{wp}/api/canli?hat=YOKYOK").read().decode())

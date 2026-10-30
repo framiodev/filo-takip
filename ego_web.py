@@ -3,11 +3,14 @@
 ego_tracker.py tarafından kullanılır: make_handler(E) bir HTTP istek işleyicisi döndürür;
 E, ego_tracker modülünün kendisidir (veritabanı ve sorgu fonksiyonları oradan gelir).
 """
+import csv
 import html
+import io
 import json
 import os
 import re
 import urllib.parse
+from http.cookies import SimpleCookie
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler
 
@@ -26,7 +29,7 @@ header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px 
 .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.1rem;color:var(--ink);text-decoration:none}
 .logo{width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:.9rem}
 nav{display:flex;gap:4px;flex:1;flex-wrap:wrap}
-nav a{padding:8px 14px;border-radius:999px;text-decoration:none;color:var(--muted);font-weight:600;font-size:.95rem}
+nav a{padding:8px 11px;border-radius:999px;text-decoration:none;color:var(--muted);font-weight:600;font-size:.95rem}
 nav a:hover{background:var(--chip)}
 nav a.on{background:var(--accent);color:#fff}
 .pill{padding:5px 11px;border-radius:999px;font-size:.82rem;font-weight:600;white-space:nowrap}
@@ -94,6 +97,30 @@ nav a i{font-style:normal}
 }
 @media (min-width:761px){nav a i{display:none}}
 @media (display-mode:standalone){footer{display:none}}
+@media (min-width:761px){.bar{max-width:1180px}nav{flex-wrap:nowrap}.pill{max-width:230px;overflow:hidden;text-overflow:ellipsis}}
+@media (max-width:760px){nav a.desk{display:none}.brand{white-space:nowrap;flex-shrink:0}.pill{min-width:0;overflow:hidden;text-overflow:ellipsis}}
+.citychip{display:inline-flex;align-items:center;gap:4px;padding:5px 11px;border-radius:999px;background:var(--chip);color:var(--ink);
+ font-size:.82rem;font-weight:700;text-decoration:none;white-space:nowrap}
+@media (max-width:760px){.citychip{background:rgba(255,255,255,.22);color:#fff}}
+.cities{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:6px}
+.city{display:block;text-decoration:none;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px 20px 18px;
+ box-shadow:0 1px 2px rgba(0,0,0,.04)}
+a.city:hover{border-color:var(--accent);box-shadow:0 4px 18px rgba(200,16,46,.15)}
+.city h2{margin:0 0 2px;font-size:1.35rem}.city .kurum{color:var(--muted);font-size:.9rem;margin-bottom:12px}
+.city .stat{font-size:.88rem;color:var(--muted)}.city .stat b{color:var(--ink)}
+.city.off{opacity:.62}
+.tag{display:inline-block;border-radius:999px;padding:2px 10px;font-size:.75rem;font-weight:700;margin-bottom:10px}
+.tag.on{background:var(--okbg);color:var(--ok)}.tag.soon{background:var(--warnbg);color:var(--warn)}
+.hero{text-align:center;margin:18px 0 8px}.hero h1{font-size:1.5rem;margin-bottom:6px}
+.dnav{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-4px 0 14px}
+.dnav a,.csvbtn{background:var(--chip);color:var(--ink);text-decoration:none;border-radius:999px;padding:6px 13px;font-size:.88rem;font-weight:600}
+.dnav a:hover,.csvbtn:hover{background:var(--accent);color:#fff}
+.csvbtn{display:inline-block;margin-left:auto}
+.bar2{height:8px;border-radius:99px;background:var(--chip);overflow:hidden;min-width:70px}
+.bar2 i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.fgrid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end}
+@media(max-width:760px){.fgrid{grid-template-columns:1fr 1fr}.fgrid .field.grow{grid-column:1/-1}}
+select{width:100%;padding:12px 13px;font-size:1rem;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
 """
 
 ICON = (
@@ -105,7 +132,7 @@ ICON = (
 ICON_PNG = {'192': 'iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAADgUlEQVR42u3dwXHbShBF0cEUAqASoZbOf0ctHYlDoBNQqSgRInr6nZOAP4C+06As82+3y3Wc7D5It531B+8GngLuZwWxG3qKB7GtHIDB56gZ2lYKwOCzRAi7wSc5hN3gkxzCNPw0+wnSSwMw/CwdwW7wSX4lmoaf5G0wDT/JEUzDT3IE0/CTHMF0j0g2nf4kb4Fp+EmOYBp+kiPwGQCfAZz+pG4BGwAbwOlP6hawAbABnP6kbgEbABvA6U/qFrABsAEgPQCvP0S+BtkA2AAgAAgNwPs/NgAIAAQAAgABgABAACAAEAAIAAQAAgABgABAALCWvcNF/Pn315M8ycfb+9L//dvtcr0belJjWC4Agy+E2M8Aht9zitwABt82iN0Aht828AoEiQE4/W2B2AAMvwi8AkFiAE5/W8AGgOF3gUba76Y4ycM3wDM31/DXP2SqxTM9FJLv9/QwSL7v00Mg+f77KRDD3wOAAEAAIAAQAAgABAACAAGAAEAAIAAQAAgABAACAAGAAEAAIIDhS5qGL8kSgIdg+AXgYbjfAvBQ3Ofhy3E9HGwAEAAIAAQAAgABgABAACAAEAAIAAQAAgABgABAACAAEAAIAAQAAgABwAoBfLy9eyqNVXu+NgA2AAjAmiTwudoA2ABOC1Kf53TTSH6OXoHwCuT0IPX5bbfL9T589z+hB9d0U0l+TkttANvA4AtADIZeAK8PZ8UH3f36BHDCxlhhULpfn78HOPF1qfrrVvfrE0CBh1t1SLpfnwAKPdRqQ9L9+gQAAqh1mlU5JbtfnwBAADVPsbNPye7XJwAQAAgABAACAAGAAMbZv9149m9Pdr8+AYAAap5iVU7H7tcnABBArdOs2unY/foEUOihVh2O7tcngAIPt/pwdL++4R/FD9+a4PoE8KpB6TAY3a9PAOAzAAgABAACAAGAAEAAIAAQAAgABABzjLG5DdgAIAAQAMQF4HMAiTYbABsABOA1iLDXHxsAG+CzKiDh9LcBsAG+qgM6n/42ADbAI5VAx9PfBsAG+E4t0On0f2QDiIC2w//oK5AIaDn8PgPgM8ARFcGKp/93N4AIaDX8P3kFEgFthv+nnwFEQIvhH2OM/ck/xP9eiSUH/6ifAtkGLDv8R/0YVAQsOfzPvAJ5JWLpwT86ACGw1OD/VgBCYInB/+0AhEDpwX9VAJ9dhBgo84OV/4Ks9MgKBNNaAAAAAElFTkSuQmCC', '512': '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', 'm512': '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AOAQcWiYQ3OIAAAHiQPDHIIAAIeJw8IcggAAAOKvAAAAAQAACAAAQAAAAAIAABAAAIAAAAAEAAAgAAAAAQAACAAAQAAAAAIAAASARwAAAgAAEAAAgAAAAAQAACAAAAABAAAIAABAAAAAAgAAEAAAgAAAAAQAACAAAAABAAAIAABAAAAAAgAABAAAIAAAAAEAAAgAAEAAAAACAAAQAACAAAAABAAAIAAAAAEAAAgAAEAAAAACAAAQAACAAAAABAAACAAAQAAAAAIAABAAAIAAAAAEAAAgAAAAAQAACAAAQAAAAAIAABAAAIAAAAAEAAAgAAAAAQAACAAAEAAAgAAAAAQAACAAAAABAAAIAABAAAAAAgAAEAAAgAAAAAQAACAAAAABAAAIAABAAAAAAgAAEAAAIAAAAAEAAAgAAEAAAAACAAAQAACAAAAABAAAIAAAAAEAAAgAAEAAAAACAAAQAACAAAAABAAAIAAAQAB4BAAgAAAAAQAACAAAQAAAAAIAABAAAIAAAAAEAAAgAAAAAQAACAAAQAAAAAIAABAAAIAAAAAEAAAgAABAAAAAAgAAEAAAgAAAAAQAACAAAAABAAAIAABAAAAAAgAAEAAAgAAAAAQAACAAAAABAAAIAABAAACAAAAABAAAIAAAAAEAAAgAAEAAAAACAABozC8PP70YFcRqKQAAAABJRU5ErkJggg=='}
 
 MANIFEST = {
-    "name": "EGO Filo Takip", "short_name": "Filo Takip", "start_url": "/", "display": "standalone",
+    "name": "Filo Takip", "short_name": "Filo Takip", "start_url": "/", "display": "standalone",
     "background_color": "#f3f4f6", "theme_color": "#c8102e",
     "id": "/", "scope": "/", "lang": "tr", "orientation": "any",
     "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
@@ -114,7 +141,35 @@ MANIFEST = {
               {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}],
 }
 
-TABS = [("/", "Sorgula", "🔍"), ("/harita", "Harita", "🗺️"), ("/gun", "Gün özeti", "📅"), ("/modeller", "Modeller", "🚌"), ("/raporlar", "Raporlar", "📄"), ("/durum", "Durum", "📶")]
+TABS = [("/", "Sorgula", "🔍"), ("/harita", "Harita", "🗺️"), ("/gun", "Gün özeti", "📅"), ("/hatlar", "İlk hatlar", "📊"), ("/modeller", "Modeller", "🚌"), ("/raporlar", "Raporlar", "📄"), ("/durum", "Durum", "📶")]
+
+DESK_ONLY = {"/raporlar"}  # dar ekranda alt çubuktan gizlenir (Durum sayfasından erişilir)
+
+# Şehir kayıt defteri: yeni şehir eklemek için buraya satır ekle ve toplayıcı bağdaştırıcısını yaz.
+CITIES = [
+    {"id": "ankara", "ad": "Ankara", "kurum": "EGO Genel Müdürlüğü", "aktif": True},
+    {"id": "istanbul", "ad": "İstanbul", "kurum": "İETT · İBB", "aktif": False},
+    {"id": "izmir", "ad": "İzmir", "kurum": "ESHOT · İzmir Büyükşehir", "aktif": False},
+]
+CITY_BY_ID = {c["id"]: c for c in CITIES}
+GUN_AD = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
+
+
+def csv_cell(v):
+    """Excel formül enjeksiyonuna karşı: =, +, @ ile başlayan metni kesme işaretiyle koru."""
+    t = "" if v is None else str(v)
+    if t.startswith(("=", "+", "@", "\t", "\r")) or (t.startswith("-") and len(t) > 1 and not t[1:].replace(".", "", 1).isdigit()):
+        return "'" + t
+    return t
+
+
+def csv_bytes(header, rows):
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";", lineterminator="\r\n")
+    w.writerow(header)
+    for r in rows:
+        w.writerow([csv_cell(c) for c in r])
+    return ("\ufeff" + buf.getvalue()).encode("utf-8")
 
 
 def natural_key(s):
@@ -200,8 +255,15 @@ def make_handler(E):
             return f'<span class="pill ok" title="{c["vehicles"]} araç, {c["fails"]} hata">● Toplayıcı çalışıyor · son tur {fmt(c["ts"])}</span>'
         return f'<span class="pill bad">● Toplayıcı durmuş olabilir · son tur {fmt(c["ts"], True)}</span>'
 
-    def layout(active, body, title="EGO Filo Takip"):
-        nav = "".join(f'<a href="{h}" class="{"on" if h == active else ""}"><i>{ic}</i><span>{esc(t)}</span></a>' for h, t, ic in TABS)
+    def layout(active, body, title="EGO Filo Takip", picker=False):
+        if picker:
+            nav, chip, status = "", "", ""
+        else:
+            nav = "".join(
+                f'<a href="{h}" class="{"on" if h == active else ""}{" desk" if h in DESK_ONLY else ""}"><i>{ic}</i><span>{esc(t)}</span></a>'
+                for h, t, ic in TABS)
+            chip = '<a class="citychip" href="/sehir" title="Şehri değiştir">📍 Ankara ▾</a>'
+            status = status_chip()
         return (
             '<!doctype html><html lang="tr"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
@@ -209,8 +271,8 @@ def make_handler(E):
             '<meta name="apple-mobile-web-app-capable" content="yes"><link rel="manifest" href="/manifest.json">'
             '<link rel="icon" href="/icon.svg" type="image/svg+xml">'
             f"<title>{esc(title)}</title><style>{CSS}</style></head><body>"
-            '<header><div class="bar"><a class="brand" href="/"><span class="logo">🚌</span>EGO Filo Takip</a>'
-            f"<nav>{nav}</nav>{status_chip()}</div></header><main>{body}</main>"
+            '<header><div class="bar"><a class="brand" href="/"><span class="logo">🚌</span>Filo Takip</a>'
+            f"{chip}<nav>{nav}</nav>{status}</div></header><main>{body}</main>"
             "<footer>Resmi olmayan, ticari amaç gütmeyen kişisel arşiv. Veri: EGO canlı servisleri. "
             "Durak saatleri gözlemler arası ara değerle tahmin edilir.</footer></body></html>"
         )
@@ -364,13 +426,239 @@ def make_handler(E):
                     res = E.query_vehicle(conn, q, E.to_epoch(day, E.parse_time(saat)), max(5, min(180, int(tol or 30))))
                     body += render_window(res)
                 else:
+                    body += day_nav(q, day)
                     body += render_day(E.query_day(conn, q, day))
+                    body += history_card(conn, q, day)
             finally:
                 conn.close()
         else:
             body += '<div class="card empty">Bir filo kodu (ör. <b>09-524</b>) ya da plaka yazın, tarihi seçin.<br>' \
                     'Saat boş bırakılırsa o günün tüm seferleri ve durak saatleri gelir.</div>'
         return layout("/", body)
+
+    # ------------------------------------------------------------------ Ortak veri yardımcıları
+    def _tips():
+        try:
+            conn = E.connect()
+            try:
+                return {r[0]: r[1] for r in conn.execute("SELECT anahtar, tip FROM arac_tip")}
+            finally:
+                conn.close()
+        except Exception:
+            return {}
+
+    def _tip_of(tips, arac_no, plaka):
+        return tips.get(E.norm(plaka)) or tips.get(E.norm(arac_no)) or ""
+
+    def _hesap_gun(g, varsayilan=1, ust=366):
+        try:
+            return max(1, min(ust, int(g("gun", str(varsayilan)))))
+        except ValueError:
+            return varsayilan
+
+    def vehicle_days(conn, plakalar, bitis, gun):
+        """Araç(lar)ın son `gun` gündeki hat dilimleri: [(gün, plaka, filo, hat, ilk, son)], yeniden eskiye."""
+        if not plakalar:
+            return []
+        ilk_gun = bitis - timedelta(days=gun - 1)
+        start = E.day_bounds(ilk_gun)[0]
+        ph = ",".join("?" * len(plakalar))
+        rows = conn.execute(
+            f"SELECT plaka, arac_no, hat, first_ts, last_ts FROM stints WHERE plaka IN ({ph}) AND last_ts>=? AND first_ts<? "
+            "ORDER BY first_ts", (*plakalar, start, E.day_bounds(bitis)[1])).fetchall()
+        out = []
+        for i in range(gun):
+            d = bitis - timedelta(days=i)
+            s0, s1 = E.day_bounds(d)
+            for plaka, arac, hat, a, b in rows:
+                if b >= s0 and a < s1:
+                    out.append((d, plaka, arac or "", hat, max(a, s0), min(b, s1 - 1)))
+        return out
+
+    def first_data_day(conn):
+        r = conn.execute("SELECT v FROM meta WHERE k='first_data_ts'").fetchone()
+        if r:
+            try:
+                return datetime.fromtimestamp(int(r[0]), TZ).date()
+            except (ValueError, OSError):
+                pass
+        r = conn.execute("SELECT MIN(first_ts) FROM stints").fetchone()
+        return datetime.fromtimestamp(r[0], TZ).date() if r and r[0] else None
+
+    def url_ara(q, d):
+        return "/?q=%s&tarih=%s" % (urllib.parse.quote(q), d.isoformat())
+
+    def day_nav(q, day):
+        t = today()
+        links = [("‹ Önceki gün", day - timedelta(days=1)), ("Bugün", t), ("Dün", t - timedelta(days=1)),
+                 ("2 gün önce", t - timedelta(days=2))]
+        if day < t:
+            links.append(("Sonraki gün ›", day + timedelta(days=1)))
+        html_ = "".join(f'<a href="{esc(url_ara(q, d), True)}">{esc(lbl)}</a>' for lbl, d in links)
+        return f'<div class="dnav">{html_}</div>'
+
+    def history_card(conn, q, day, gun=14):
+        plakalar, _ = E.resolve_vehicle(conn, q)
+        if not plakalar:
+            return ""
+        fd = first_data_day(conn)
+        items = vehicle_days(conn, plakalar, day, gun)
+        by_day = {}
+        for d, plaka, arac, hat, a, b in items:
+            by_day.setdefault(d, []).append((a, plaka, hat, b))
+        rows = []
+        gorulen = 0
+        for i in range(gun):
+            d = day - timedelta(days=i)
+            if fd and d < fd:
+                break
+            lst = sorted(by_day.get(d, []))
+            etiket = f'{d.strftime("%d.%m.%Y")} {GUN_AD[d.weekday()]}'
+            if not lst:
+                rows.append(f'<tr><td><a href="{esc(url_ara(q, d), True)}">{etiket}</a></td><td class="muted">kayıt yok</td></tr>')
+                continue
+            gorulen += 1
+            cok = len(plakalar) > 1
+            parca = " · ".join(
+                f'{(esc(E.pretty_plate(pl)) + " ") if cok else ""}<b>{esc(hat)}</b> {fmt(a)}–{fmt(b)}' for a, pl, hat, b in lst)
+            rows.append(f'<tr><td><a href="{esc(url_ara(q, d), True)}">{etiket}</a></td><td>{parca}</td></tr>')
+        if not rows:
+            return ""
+        csv_url = "/csv/arac?q=%s&tarih=%s&gun=%d" % (urllib.parse.quote(q), day.isoformat(), gun)
+        return (f'<div class="card"><div class="vhead"><b>Son {gun} gün</b>'
+                f'<span class="muted">{gorulen} gün kayıtlı</span>'
+                f'<a class="csvbtn" href="{esc(csv_url, True)}">CSV indir</a></div>'
+                '<div class="scroll"><table><thead><tr><th>Tarih</th><th>Hat ve saatler</th></tr></thead>'
+                f'<tbody>{"".join(rows)}</tbody></table></div></div>')
+
+    # ------------------------------------------------------------------ İlk hatlar
+    def hat_stats(day, gun, limit=50):
+        start = E.day_bounds(day - timedelta(days=gun - 1))[0]
+        end = E.day_bounds(day)[1]
+        conn = E.connect()
+        try:
+            rows = conn.execute(
+                "SELECT hat, COUNT(DISTINCT plaka), COUNT(*) FROM stints WHERE last_ts>=? AND first_ts<? "
+                "GROUP BY hat ORDER BY 2 DESC, 3 DESC, hat LIMIT ?", (start, end, limit)).fetchall()
+            names = {r[0]: r[1] for r in conn.execute("SELECT hat, ad FROM lines")}
+        finally:
+            conn.close()
+        return rows, names
+
+    def page_hatlar(g):
+        day = E.parse_day(g("tarih"))
+        gun = _hesap_gun(g, 1, 90)
+        rows, names = hat_stats(day, gun)
+        sec = "".join(f'<option value="{v}"{" selected" if v == gun else ""}>{t}</option>'
+                      for v, t in ((1, "Seçili gün"), (7, "Son 7 gün"), (30, "Son 30 gün")))
+        form = ('<form class="card form two" method="get" action="/hatlar" style="grid-template-columns:1fr 1fr auto">'
+                f'<div class="field"><label>Tarih</label><input type="date" name="tarih" value="{esc(day.isoformat(), True)}"></div>'
+                f'<div class="field"><label>Aralık</label><select name="gun">{sec}</select></div>'
+                '<button class="btn">Göster</button></form>')
+        body = "<h1>İlk 50 hat</h1>" + form
+        if not rows:
+            body += '<div class="card empty">Bu aralıkta kayıt yok.</div>'
+        else:
+            top = max(r[1] for r in rows) or 1
+            tr = "".join(
+                f'<tr><td>{i}</td><td><a href="/gun?tarih={day.isoformat()}&hat={urllib.parse.quote(h)}"><b>{esc(h)}</b></a>'
+                f'<div class="muted" style="font-size:.8rem">{esc(names.get(h, ""))}</div></td>'
+                f'<td><b>{n_v}</b></td><td>{n_s}</td><td><div class="bar2"><i style="width:{round(100 * n_v / top)}%"></i></div></td></tr>'
+                for i, (h, n_v, n_s) in enumerate(rows, 1))
+            ara = day.strftime("%d.%m.%Y") if gun == 1 else f'{(day - timedelta(days=gun - 1)).strftime("%d.%m.%Y")} – {day.strftime("%d.%m.%Y")}'
+            csv_url = "/csv/hatlar?tarih=%s&gun=%d" % (day.isoformat(), gun)
+            body += (note("Sıralama o aralıkta hatta görülen farklı araç sayısına göredir. Çalışma dilimi, bir aracın hatta kesintisiz "
+                          "görüldüğü her süredir; gerçek sefer sayısı değildir.", "info")
+                     + f'<div class="card"><div class="vhead"><b>{esc(ara)}</b><a class="csvbtn" href="{esc(csv_url, True)}">CSV indir</a></div>'
+                     '<div class="scroll" style="max-height:none"><table><thead><tr><th>#</th><th>Hat</th><th>Araç</th>'
+                     f'<th>Çalışma dilimi</th><th></th></tr></thead><tbody>{tr}</tbody></table></div></div>')
+        return layout("/hatlar", body, "İlk hatlar · EGO Filo Takip")
+
+    # ------------------------------------------------------------------ CSV dışa aktarma
+    def csv_gun(g):
+        day = E.parse_day(g("tarih"))
+        hat = g("hat")
+        start, end = E.day_bounds(day)
+        conn = E.connect()
+        try:
+            sql = ("SELECT hat, plaka, arac_no, first_ts, last_ts, n FROM stints WHERE last_ts>=? AND first_ts<? ")
+            args = [start, end]
+            if hat:
+                sql += "AND hat=? "
+                args.append(hat)
+            rows = conn.execute(sql + "ORDER BY hat, first_ts", args).fetchall()
+        finally:
+            conn.close()
+        mdb, tips = _db_models(), _tips()
+        out = []
+        for h, plaka, arac, a, b, n in sorted(rows, key=lambda r: (natural_key(r[0]), r[3])):
+            out.append((day.isoformat(), h, E.pretty_plate(plaka), arac or "", model_for(arac, plaka, mdb)[0],
+                        _tip_of(tips, arac, plaka), fmt(max(a, start), False), fmt(min(b, end - 1), False), n))
+        return ("gun-%s%s.csv" % (day.isoformat(), "-hat" + re.sub(r"[^0-9A-Za-z_-]", "", hat) if hat else ""),
+                csv_bytes(["tarih", "hat", "plaka", "filo_no", "marka_model", "tip", "ilk_gorulme", "son_gorulme", "gozlem"], out))
+
+    def csv_hatlar(g):
+        day = E.parse_day(g("tarih"))
+        gun = _hesap_gun(g, 1, 90)
+        rows, names = hat_stats(day, gun)
+        ilk = day - timedelta(days=gun - 1)
+        out = [(i, h, names.get(h, ""), n_v, n_s, ilk.isoformat(), day.isoformat()) for i, (h, n_v, n_s) in enumerate(rows, 1)]
+        return ("ilk-hatlar-%s-%dg.csv" % (day.isoformat(), gun),
+                csv_bytes(["sira", "hat", "hat_adi", "arac_sayisi", "calisma_dilimi", "baslangic", "bitis"], out))
+
+    def csv_arac(g):
+        q = g("q")
+        day = E.parse_day(g("tarih"))
+        gun = _hesap_gun(g, 14, 366)
+        conn = E.connect()
+        try:
+            plakalar, _ = E.resolve_vehicle(conn, q)
+            items = vehicle_days(conn, plakalar, day, gun)
+        finally:
+            conn.close()
+        mdb, tips = _db_models(), _tips()
+        out = [(d.isoformat(), E.pretty_plate(pl), arac, model_for(arac, pl, mdb)[0], _tip_of(tips, arac, pl), hat,
+                fmt(a, False), fmt(b, False)) for d, pl, arac, hat, a, b in sorted(items, key=lambda r: (r[0], r[4]))]
+        ad = re.sub(r"[^0-9A-Za-z_-]", "", E.norm(q)) or "arac"
+        return ("arac-%s-%s-%dg.csv" % (ad, day.isoformat(), gun),
+                csv_bytes(["tarih", "plaka", "filo_no", "marka_model", "tip", "hat", "ilk_gorulme", "son_gorulme"], out))
+
+    # ------------------------------------------------------------------ Şehir seçimi
+    def city_stats():
+        try:
+            conn = E.connect()
+            try:
+                n = conn.execute("SELECT COUNT(DISTINCT plaka) FROM stints").fetchone()[0]
+                fd = first_data_day(conn)
+            finally:
+                conn.close()
+        except Exception:
+            return None
+        return n, fd
+
+    def page_sehir(g):
+        st = city_stats()
+        kart = []
+        for c in CITIES:
+            if c["aktif"]:
+                alt = ""
+                if st and st[0]:
+                    alt = (f'<div class="stat"><b>{f"{st[0]:,}".replace(",", ".")}</b> araç kayıtlı'
+                           + (f' · <b>{st[1].strftime("%d.%m.%Y")}</b>\'den beri' if st[1] else "") + "</div>")
+                kart.append(f'<a class="city" href="/sehir/sec?s={c["id"]}"><span class="tag on">Aktif</span>'
+                            f'<h2>{esc(c["ad"])}</h2><div class="kurum">{esc(c["kurum"])}</div>{alt}</a>')
+            else:
+                kart.append(f'<div class="city off"><span class="tag soon">Yakında</span>'
+                            f'<h2>{esc(c["ad"])}</h2><div class="kurum">{esc(c["kurum"])}</div>'
+                            '<div class="stat">Veri toplama hazırlanıyor</div></div>')
+        uyari = ""
+        if g("yakinda"):
+            ad = CITY_BY_ID.get(g("yakinda"), {}).get("ad", "Bu şehir")
+            uyari = note(f"{ad} henüz hazır değil. Hazır olunca buradan seçilebilecek.", "info")
+        body = ('<div class="hero"><h1>Hangi şehrin arşivini görmek istiyorsun?</h1>'
+                '<div class="muted">Seçimin bu cihazda hatırlanır; üstteki şehir düğmesinden değiştirebilirsin.</div></div>'
+                + uyari + f'<div class="cities">{"".join(kart)}</div>')
+        return layout("/sehir", body, "Şehir seç · Filo Takip", picker=True)
 
     # ------------------------------------------------------------------ Gün özeti
     def page_gun(g):
@@ -402,7 +690,9 @@ def make_handler(E):
         if not by_hat:
             body += '<div class="card empty">Bu tarihte ' + ("bu hatta " if hat else "") + "kayıt yok.</div>"
         else:
+            csv_url = "/csv/gun?tarih=%s%s" % (day.isoformat(), "&hat=" + urllib.parse.quote(hat) if hat else "")
             body += note(f"{len(by_hat)} hat, {total} araç. Bir araca tıklayarak o günkü seferlerini ve durak saatlerini açın.", "info")
+            body += f'<div class="dnav"><a href="{esc(csv_url, True)}">CSV indir</a><a href="/hatlar?tarih={day.isoformat()}">İlk 50 hat</a></div>'
         if not hat:
             conn = E.connect()
             try:
@@ -484,6 +774,7 @@ def make_handler(E):
         ]
         grid = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for v, k in cells)
         body = ("<h1>Durum</h1>" + f'<div class="card"><div class="kv">{grid}</div></div>'
+                '<div class="dnav"><a href="/raporlar">Günlük raporlar</a><a href="/sehir">Şehir değiştir</a></div>'
                 f'<p class="muted">Veritabanı: {esc(E.DB_PATH)}</p>')
         return layout("/durum", body, "Durum · EGO Filo Takip")
 
@@ -504,12 +795,13 @@ def make_handler(E):
         finally:
             conn.close()
         now = E.now_ts()
-        mdb = _db_models()
+        mdb, tips = _db_models(), _tips()
         out = []
         for plaka, arac, hat, lat, lng, hiz, sira, t in rows:
             out.append({"p": E.pretty_plate(plaka), "f": arac or "", "h": hat, "la": lat, "lo": lng,
                         "v": hiz, "d": route.get((hat, sira), "") if sira is not None else "",
-                        "t": fmt(t, True), "age": int((now - t) / 60), "m": model_for(arac, plaka, mdb)[0]})
+                        "t": fmt(t, True), "age": int((now - t) / 60), "m": model_for(arac, plaka, mdb)[0],
+                        "tp": _tip_of(tips, arac, plaka)})
         return json.dumps({"n": len(out), "araclar": out}, ensure_ascii=False)
 
     def api_canli(g):
@@ -553,10 +845,13 @@ def make_handler(E):
 (function(){
 var map=L.map('map',{preferCanvas:true}).setView([39.93,32.86],11);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
-var layer=L.layerGroup().addTo(map),data=[],first=true;
+var layer=(L.markerClusterGroup?L.markerClusterGroup({disableClusteringAtZoom:15,maxClusterRadius:45,showCoverageOnHover:false,chunkedLoading:true}):L.layerGroup()).addTo(map),data=[];
+if(!layer.addLayers){layer.addLayers=function(a){a.forEach(function(x){layer.addLayer(x);});};layer.zoomToShowLayer=function(m,f){f();};}
+function $(i){return document.getElementById(i);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
+function op(a){return String(a.p||'').replace(/\\s/g,'').toUpperCase().indexOf('06HO')===0?'oho':'ego';}
 function popupHtml(a){
- return '<b>'+esc(a.f||'-')+'</b> &middot; '+esc(a.p)+(a.m?'<br>'+esc(a.m)+' ~':'')+'<br>Hat <b>'+esc(a.h)+'</b>'+(a.d?'<br>Yöneldiği durak: '+esc(a.d):'')+'<br>Hız: '+esc(a.v)+' km/sa<br>Son görülme: '+esc(a.t)+' ('+a.age+' dk önce)<br><a href="/?q='+encodeURIComponent(a.f||a.p)+'">Bugünkü seferleri</a><br><button class="rf" style="margin-top:6px;padding:5px 10px">Anlık yenile</button><span class="rfs"></span>';
+ return '<b>'+esc(a.f||'-')+'</b> &middot; '+esc(a.p)+(a.m?'<br>'+esc(a.m)+' ~':'')+(a.tp?' <span style="opacity:.75">'+esc(a.tp)+'</span>':'')+'<br>Hat <b>'+esc(a.h)+'</b>'+(a.d?'<br>Yöneldiği durak: '+esc(a.d):'')+'<br>Hız: '+esc(a.v)+' km/sa<br>Son görülme: '+esc(a.t)+' ('+a.age+' dk önce)<br><a href="/?q='+encodeURIComponent(a.f||a.p)+'">Bugünkü seferleri</a><br><button class="rf" style="margin-top:6px;padding:5px 10px">Anlık yenile</button><span class="rfs"></span>';
 }
 function hook(m,a,popup){
  var el=popup.getElement();var b=el&&el.querySelector('.rf');if(!b)return;
@@ -566,33 +861,39 @@ function hook(m,a,popup){
    var n=(j.araclar||[]).filter(function(x){return (a.f&&x.f===a.f)||(a.p&&x.p.replace(/ /g,'')===a.p.replace(/ /g,''));})[0];
    if(!n){b.disabled=false;s.textContent=j.hata?' '+j.hata:' araç şu an bu hatta listede yok';return;}
    Object.keys(n).forEach(function(k){a[k]=n[k];});
-   m.setLatLng([a.la,a.lo]);m.setStyle({color:'#166534',fillColor:'#22c55e',radius:7});
-   popup.setContent(popupHtml(a));hook(m,a,popup);map.panTo([a.la,a.lo]);
+   layer.removeLayer(m);m.setLatLng([a.la,a.lo]);m.setStyle({color:'#166534',fillColor:'#22c55e',radius:7});
+   m.setPopupContent(popupHtml(a));layer.addLayer(m);
+   layer.zoomToShowLayer(m,function(){m.openPopup();});
   }).catch(function(){b.disabled=false;s.textContent=' alınamadı';});
  };
 }
 function draw(){
- var q=document.getElementById('q').value.trim().toLowerCase();
- var onlyLive=document.getElementById('live').checked;
- layer.clearLayers();var shown=0,live=0,b=[];
+ var q=$('q').value.trim().toLowerCase(),hat=$('hat').value.trim().toLowerCase(),o=$('op').value,tp=$('tip').value;
+ var onlyLive=$('live').checked;
+ layer.clearLayers();var shown=0,live=0,b=[],ms=[];
  data.forEach(function(a){
   var txt=(a.f+' '+a.p+' '+a.h+' '+(a.m||'')).toLowerCase();
   if(q&&txt.indexOf(q)<0)return;
+  if(hat&&String(a.h).toLowerCase()!==hat)return;
+  if(o&&op(a)!==o)return;
+  if(tp&&(a.tp||'')!==tp)return;
   var isLive=a.age<=15; if(onlyLive&&!isLive)return;
   shown++; if(isLive)live++;
   var m=L.circleMarker([a.la,a.lo],{radius:isLive?7:5,color:isLive?'#166534':'#6b7280',fillColor:isLive?'#22c55e':'#9ca3af',fillOpacity:isLive?.9:.6,weight:1});
   m.bindPopup(popupHtml(a));
   m.on('popupopen',function(e){hook(m,a,e.popup);});
-  m.addTo(layer); b.push([a.la,a.lo]);
+  ms.push(m); b.push([a.la,a.lo]);
  });
- document.getElementById('cnt').textContent=shown+' araç gösteriliyor, '+live+' tanesi canlı (son 15 dk)';
- if(q&&b.length&&b.length<=30)map.fitBounds(b,{maxZoom:15,padding:[40,40]});
+ layer.addLayers(ms);
+ $('cnt').textContent=shown+' araç gösteriliyor, '+live+' tanesi canlı (son 15 dk)';
+ if((q||hat)&&b.length&&b.length<=30)map.fitBounds(b,{maxZoom:15,padding:[40,40]});
 }
 function load(){
- fetch('/api/araclar?saat='+document.getElementById('saat').value).then(function(r){return r.json()}).then(function(j){data=j.araclar;draw();}).catch(function(){document.getElementById('cnt').textContent='Veri alınamadı';});
+ fetch('/api/araclar?saat='+$('saat').value).then(function(r){return r.json()}).then(function(j){data=j.araclar;draw();}).catch(function(){$('cnt').textContent='Veri alınamadı';});
 }
-['q','live'].forEach(function(i){document.getElementById(i).addEventListener('input',draw);});
-document.getElementById('saat').addEventListener('change',load);
+['q','hat'].forEach(function(i){$(i).addEventListener('input',draw);});
+['op','tip','live'].forEach(function(i){$(i).addEventListener('change',draw);});
+$('saat').addEventListener('change',load);
 load();setInterval(load,60000);
 })();
 """
@@ -600,16 +901,24 @@ load();setInterval(load,60000);
     def page_harita(g):
         body = (
             "<h1>Harita</h1>"
-            '<div class="card form two" style="grid-template-columns:2fr 1fr auto">'
-            '<div class="field"><label>Filo kodu, plaka veya hat (filtre)</label><input id="q" placeholder="09-524 · 590 · 06 BT" autocomplete="off"></div>'
+            '<div class="card fgrid">'
+            '<div class="field grow"><label>Filo kodu, plaka, model veya hat (arama)</label><input id="q" placeholder="09-524 · 590 · Lion" autocomplete="off"></div>'
+            '<div class="field"><label>Tam hat</label><input id="hat" placeholder="590" autocomplete="off"></div>'
+            '<div class="field"><label>İşletme</label><select id="op"><option value="">Tümü</option><option value="ego">EGO</option>'
+            '<option value="oho">ÖHO / Halk otobüsü (06 HO)</option></select></div>'
+            '<div class="field"><label>Tip</label><select id="tip"><option value="">Tümü</option><option value="Körüklü">Körüklü</option>'
+            '<option value="Solo">Solo</option></select></div>'
             '<div class="field"><label>Son kaç saat</label><input id="saat" type="number" value="24" min="1" max="168"></div>'
             '<div class="field"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input id="live" type="checkbox" style="width:auto"> yalnız canlı</label></div></div>'
             '<div class="muted" id="cnt" style="margin:6px 2px 10px">Yükleniyor…</div>'
             '<div id="map" style="height:68vh;min-height:360px;border-radius:16px;border:1px solid var(--line)"></div>'
-            '<p class="muted">Yeşil: son 15 dakikada görüldü. Gri: çalışmıyor veya veri yok, son bilinen konum. '
-            'Veri taramalar arasında güncellenir (yaklaşık 5 dk).</p>'
+            '<p class="muted">Yeşil: son 15 dakikada görüldü. Gri: çalışmıyor veya veri yok, son bilinen konum. Kalabalık bölgelerde araçlar '
+            'sayıyla gruplanır; yaklaştıkça tek tek görünür. Veri taramalar arasında güncellenir (yaklaşık 1-5 dk).</p>'
             '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">'
+            '<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">'
+            '<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">'
             '<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>'
+            '<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>'
             "<script>" + MAP_JS + "</script>"
         )
         return layout("/harita", body, "Harita · EGO Filo Takip")
@@ -712,11 +1021,21 @@ load();setInterval(load,60000);
             self.end_headers()
             self.wfile.write(data)
 
-        def _redirect(self, to):
+        def _redirect(self, to, extra=None):
             self.send_response(303)
             self.send_header("Location", to)
             self.send_header("Content-Length", "0")
+            for k, v in (extra or {}).items():
+                self.send_header(k, v)
             self.end_headers()
+
+        def _sehir(self):
+            try:
+                c = SimpleCookie(self.headers.get("Cookie") or "")
+                v = c["sehir"].value if "sehir" in c else ""
+            except Exception:
+                v = ""
+            return v if v in CITY_BY_ID and CITY_BY_ID[v]["aktif"] else ""
 
         def do_GET(self):
             u = urllib.parse.urlparse(self.path)
@@ -727,7 +1046,23 @@ load();setInterval(load,60000);
 
             try:
                 if u.path == "/":
+                    if not g("q") and not self._sehir():
+                        return self._send(page_sehir(g))
                     return self._send(page_ara(g))
+                if u.path == "/sehir":
+                    return self._send(page_sehir(g))
+                if u.path == "/sehir/sec":
+                    sec = g("s")
+                    if sec in CITY_BY_ID and CITY_BY_ID[sec]["aktif"]:
+                        return self._redirect("/", {"Set-Cookie": "sehir=%s; Path=/; Max-Age=31536000; SameSite=Lax" % sec})
+                    return self._redirect("/sehir?yakinda=" + urllib.parse.quote(sec))
+                if u.path == "/hatlar":
+                    return self._send(page_hatlar(g))
+                if u.path in ("/csv/gun", "/csv/hatlar", "/csv/arac"):
+                    fn = {"/csv/gun": csv_gun, "/csv/hatlar": csv_hatlar, "/csv/arac": csv_arac}[u.path]
+                    name, data = fn(g)
+                    return self._send(data, "text/csv; charset=utf-8",
+                                      extra={"Content-Disposition": f'attachment; filename="{name}"'})
                 if u.path == "/modeller":
                     return self._send(page_modeller(g, "Kaydedildi." if g("ok") else ""))
                 if u.path == "/harita":

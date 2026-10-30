@@ -17,6 +17,13 @@ Ankara EGO otobüslerinin hangi hatta, hangi saatte ve hangi duraklardan geçti�
 ## Güncelleme akışı
 `main` dalına push → sunucu 5 dakikada bir çeker → `test_mock.py` geçerse servisler yeniden başlar (başarısızsa eski sürüm çalışmaya devam eder, `guncelleme.log`).
 
+## Arayüz özellikleri
+- Açılışta şehir seçimi (çerezle hatırlanır, üstteki şehir düğmesinden değişir). Şehir listesi `ego_web.py` içindeki `CITIES`; `aktif: False` olanlar "Yakında" görünür.
+- Sorgula: filo kodu/plaka + tarih (+saat), gün gezgini, son 14 gün geçmişi
+- Harita: kümeleme, işletme (EGO / ÖHO 06 HO), körüklü/solo, tam hat ve metin filtresi
+- İlk hatlar: seçili gün / 7 / 30 gün için en çok araç çalıştıran 50 hat
+- CSV dışa aktarma: `/csv/gun`, `/csv/hatlar`, `/csv/arac` (Excel için `;` ayraçlı, UTF-8 BOM)
+
 ## Veri
 `*.db`, günlükler ve raporlar repoya **girmez** (`.gitignore`). Günlük yedek: `/opt/filo-takip/yedek/` (7 gün).
 
