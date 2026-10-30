@@ -58,7 +58,7 @@ def soap(http, group, method, **params):
             + "".join(f"<{k}>{html.escape(str(v))}</{k}>" for k, v in params.items())
             + f"</{method}></soap:Body></soap:Envelope>").encode("utf-8")
     try:
-        raw = http.request(BASE + PATHS[group], data=body, timeout=60, headers={
+        raw = http.request(BASE + PATHS[group], data=body, timeout=(60 if group in ("fleet", "stops", "plan", "hats") else 20), retries=(2 if group in ("fleet", "stops", "plan", "hats") else 1), headers={
             "Content-Type": "text/xml; charset=utf-8", "SOAPAction": "http://tempuri.org/" + method,
             "User-Agent": "Mozilla/5.0 (FiloTakip arsiv)"}).decode("utf-8", "replace")
     except Exception as e:
@@ -287,6 +287,8 @@ def cmd_run(args):
             for n, (kod, rows) in enumerate(pool.map(_fetch, due), 1):
                 if STOP.is_set():
                     break
+                if n == 1 or (rows is None and fails < 3):
+                    print(f"  ilk sonuç: hat {kod} -> {None if rows is None else len(rows)} araç ({int(time.time() - t0)} sn) {soap.last_error if rows is None else ''}", flush=True)
                 if rows is None:
                     fails += 1
                     continue
@@ -296,9 +298,9 @@ def cmd_run(args):
                     if E.record_sighting(conn, ts, row, key, gap, keep_raw=not args.no_raw):
                         new += 1
                     veh += 1
-                if n % 100 == 0:
+                if n % 25 == 0:
                     conn.commit()
-                    print(f"  ... {n}/{len(due)} hat, {veh} araç", flush=True)
+                    print(f"  ... {n}/{len(due)} hat, {veh} araç, {fails} hata, {int(time.time() - t0)} sn", flush=True)
         if due and fails >= len(due) * 0.9 and veh == 0:
             print(f"Hat sorguları başarısız ({fails}/{len(due)}): {soap.last_error} - 10 dk bekleniyor", flush=True)
             STOP.wait(600)
