@@ -16,6 +16,7 @@ Komutlar: probe | init | run | saatler
 import argparse
 import html
 import json
+from concurrent.futures import ThreadPoolExecutor
 import os
 import re
 import sys
@@ -266,20 +267,30 @@ def cmd_run(args):
             if k not in due:
                 idle[k] -= 1
         new = veh = fails = 0
-        for kod in due:
+
+        def _fetch(kod):
             if STOP.is_set():
-                break
+                return kod, None
             rows = line_vehicles(http, kod)
             time.sleep(args.delay)
-            if rows is None:
-                fails += 1
-                continue
-            idle[kod] = 0 if rows else args.idle_max
-            for r in rows:
-                row, key = to_ego_row(r, fl, sira_of)
-                if E.record_sighting(conn, ts, row, key, gap, keep_raw=not args.no_raw):
-                    new += 1
-                veh += 1
+            return kod, rows
+
+        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+            for n, (kod, rows) in enumerate(pool.map(_fetch, due), 1):
+                if STOP.is_set():
+                    break
+                if rows is None:
+                    fails += 1
+                    continue
+                idle[kod] = 0 if rows else args.idle_max
+                for r in rows:
+                    row, key = to_ego_row(r, fl, sira_of)
+                    if E.record_sighting(conn, ts, row, key, gap, keep_raw=not args.no_raw):
+                        new += 1
+                    veh += 1
+                if n % 100 == 0:
+                    conn.commit()
+                    print(f"  ... {n}/{len(due)} hat, {veh} araç", flush=True)
         conn.execute("INSERT OR REPLACE INTO meta (k, v) VALUES ('last_cycle', ?)",
                      (json.dumps({"ts": E.now_ts(), "due": len(due), "vehicles": veh, "fails": fails, "interval": args.interval,
                                   "fleet": len(fl)}),))
@@ -313,6 +324,7 @@ def main(argv=None):
     p.add_argument("--interval", type=float, default=3, help="tur aralığı (dk)")
     p.add_argument("--delay", type=float, default=0.15)
     p.add_argument("--idle-max", type=int, default=3)
+    p.add_argument("--workers", type=int, default=6, help="paralel sorgu sayısı")
     p.add_argument("--no-raw", action="store_true")
     p.add_argument("--once", action="store_true")
     p.set_defaults(fn=cmd_run)

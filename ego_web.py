@@ -154,9 +154,13 @@ DESK_ONLY = {"/raporlar", "/modeller", "/hatlar"}  # dar ekranda alt çubuktan g
 # Şehir kayıt defteri: yeni şehir eklemek için buraya satır ekle ve toplayıcı bağdaştırıcısını yaz.
 CITIES = [
     {"id": "ankara", "ad": "Ankara", "kurum": "EGO Genel Müdürlüğü", "aktif": True,
-     "kisa": "EGO", "merkez": [39.93, 32.86, 11], "ornek": "09-524 · EGO-22-370 · 06 BT 3809", "kaynak": "EGO canlı servisleri"},
+     "kisa": "EGO", "merkez": [39.93, 32.86, 11], "ornek": "09-524 · EGO-22-370 · 06 BT 3809", "kaynak": "EGO canlı servisleri",
+     "durak_ornek": "Kızılay veya 10940", "hat_ornek": "481 veya 523-6", "gun_ornek": "590 · Kızılay · Batıkent",
+     "durak_not": "EGO durak koordinatı yayınlamadığı için “ne kadar yakın” bilgisi, aracın tahmini varış süresi ve kaç durak kaldığı olarak gösterilir."},
     {"id": "istanbul", "ad": "İstanbul", "kurum": "İETT · İBB", "aktif": False, "db": "IETT_DB",
-     "kisa": "İETT", "merkez": [41.04, 29.0, 10], "ornek": "C-1234 · 34 TB 1234", "kaynak": "İBB açık veri servisleri"},
+     "kisa": "İETT", "merkez": [41.04, 29.0, 10], "ornek": "C-1234 · 34 TB 1234", "kaynak": "İBB açık veri servisleri",
+     "durak_ornek": "Kadıköy veya 100123", "hat_ornek": "500T veya 15F", "gun_ornek": "500T · Tuzla · Cevizlibağ",
+     "durak_not": "Duraklar İBB açık verisinden gelir. İstanbul için canlı yaklaşan araç bilgisi yoktur; geçen araçlar kendi kayıtlarımızdan gösterilir."},
     {"id": "izmir", "ad": "İzmir", "kurum": "ESHOT · İzmir Büyükşehir", "aktif": False},
 ]
 CITY_BY_ID = {c["id"]: c for c in CITIES}
@@ -776,7 +780,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         no = g("no")
         q = g("q")
         form = ('<form class="card form" method="get" action="/durak"><div class="field"><label>Durak adı veya numarası</label>'
-                f'<input name="q" value="{esc(q or no, True)}" placeholder="ör. Kızılay veya 10940" autocomplete="off"></div>'
+                f'<input name="q" value="{esc(q or no, True)}" placeholder="ör. {esc(city_meta()['durak_ornek'], True)}" autocomplete="off"></div>'
                 '<button class="btn">Ara</button></form>')
         body = "<h1>Durak takibi</h1>" + form
         if q and not no:
@@ -790,8 +794,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
                              for d, a, n in res)
                 return layout("/durak", body + f'<div class="card"><table><tbody>{li}</tbody></table></div>', "Durak · Filo Takip")
         if not no:
-            body += note("Durağı adıyla ya da numarasıyla arayın. EGO durak koordinatı yayınlamadığı için “ne kadar yakın” bilgisi, "
-                         "aracın tahmini varış süresi ve kaç durak kaldığı olarak gösterilir.", "info")
+            body += note("Durağı adıyla ya da numarasıyla arayın. " + city_meta()["durak_not"], "info")
             return layout("/durak", body, "Durak · Filo Takip")
         d = stop_data(no)
         head = f'<div class="card"><div class="vhead"><b>{esc(d["ad"] or "Durak")} · {esc(no)}</b></div>'
@@ -837,7 +840,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         hat = g("no")
         q = g("q")
         form = ('<form class="card form" method="get" action="/hat"><div class="field"><label>Hat numarası veya güzergâh</label>'
-                f'<input name="q" value="{esc(q or hat, True)}" placeholder="ör. 481 veya 523-6" autocomplete="off"></div>'
+                f'<input name="q" value="{esc(q or hat, True)}" placeholder="ör. {esc(city_meta()['hat_ornek'], True)}" autocomplete="off"></div>'
                 '<button class="btn">Göster</button></form>')
         body = "<h1>Hat bilgisi</h1>" + form
         if q and not hat:
@@ -1039,7 +1042,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
             by_hat.setdefault(h, []).append((a, plaka, arac, b))
         form = ('<form class="card form two" method="get" action="/gun">'
                 f'<div class="field"><label>Tarih</label><input type="date" name="tarih" value="{esc(day.isoformat(), True)}"></div>'
-                f'<div class="field"><label>Hat no veya güzergâh adı (boşsa tümü)</label><input name="hat" list="hatlist" value="{esc(hat, True)}" placeholder="590 · Kızılay · Batıkent" autocomplete="off"></div>'
+                f'<div class="field"><label>Hat no veya güzergâh adı (boşsa tümü)</label><input name="hat" list="hatlist" value="{esc(hat, True)}" placeholder="{esc(city_meta()['gun_ornek'], True)}" autocomplete="off"></div>'
                 f'<datalist id="hatlist">{hat_opts}</datalist>'
                 '<button class="btn">Göster</button></form>')
         body = "<h1>Gün özeti</h1>" + form
