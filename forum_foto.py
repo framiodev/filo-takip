@@ -80,6 +80,18 @@ def fotolar(html_text):
     return out
 
 
+def dene(fn, deneme=12, bekle=10):
+    """Toplayıcı veritabanını kilitliyken kısa aralıklarla yeniden dener."""
+    import sqlite3
+    for i in range(deneme):
+        try:
+            return fn()
+        except sqlite3.OperationalError as e:
+            if ("locked" not in str(e) and "busy" not in str(e)) or i == deneme - 1:
+                raise
+            time.sleep(bekle)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sehir", default="ankara", choices=sorted(SEHIR))
@@ -87,9 +99,9 @@ def main():
     ap.add_argument("--bekle", type=float, default=1.0)
     a = ap.parse_args()
     tag, dbpath = SEHIR[a.sehir]
-    conn = E.connect(dbpath)
+    conn = dene(lambda: E.connect(dbpath))
     conn.execute("PRAGMA busy_timeout=60000")
-    conn.execute("CREATE TABLE IF NOT EXISTS arac_foto (anahtar TEXT PRIMARY KEY, img TEXT, post TEXT, yazar TEXT, ts INTEGER)")
+    dene(lambda: conn.execute("CREATE TABLE IF NOT EXISTS arac_foto (anahtar TEXT PRIMARY KEY, img TEXT, post TEXT, yazar TEXT, ts INTEGER)"))
     toplam = foto = 0
     for _, tartismalar in sayfala("/api/discussions", {"filter[tag]": tag, "sort": "-lastPostedAt"}, a.bekle):
         for d in tartismalar:
@@ -104,13 +116,13 @@ def main():
                         toplam += 1
                         for anahtar in (E.norm(filo), E.norm(plaka)):
                             if anahtar and not a.kuru:
-                                conn.execute("INSERT OR REPLACE INTO arac_foto (anahtar, img, post, yazar, ts) VALUES (?,?,?,?,?)",
-                                             (anahtar, img[:400], url[:300], yazar[:60], E.now_ts()))
+                                dene(lambda: conn.execute("INSERT OR REPLACE INTO arac_foto (anahtar, img, post, yazar, ts) VALUES (?,?,?,?,?)",
+                                                          (anahtar, img[:400], url[:300], yazar[:60], E.now_ts())))
                                 foto += 1
                         if a.kuru:
                             print("  %s | %s | %s | %s | %s" % (model, filo, plaka, yazar, img))
                 time.sleep(a.bekle)
-    conn.commit()
+    dene(conn.commit)
     print("Bitti: %d fotoğraf bulundu, %d anahtar yazıldı%s." % (toplam, foto, " (kuru)" if a.kuru else ""))
     return 0
 
