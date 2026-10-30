@@ -880,7 +880,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
                     sa = [t for t in ts_ if t[1] == y]
                     chips = " ".join(
                         f'<span class="chip"{(" title=" + chr(34) + esc(t[3], True) + chr(34)) if t[3] else ""}>{esc(t[2])}{"*" if t[3] else ""}</span>' for t in sa)
-                    inner += f'<div style="margin:6px 0"><span class="muted">{"Gidiş" if y == 0 else "Dönüş"} · {len(sa)} sefer</span><div class="times">{chips}</div></div>'
+                    inner += f'<div style="margin:6px 0"><span class="muted">{len(sa)} sefer</span><div class="times">{chips}</div></div>'
                 nx = ""
                 if key == bugun:
                     nxt = [t[2] for t in ts_ if t[1] == 0 and t[2] >= nowhm][:3]

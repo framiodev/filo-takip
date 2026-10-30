@@ -497,17 +497,28 @@ def parse_line_page(body):
             if len(c) >= 2:
                 info[re.sub(r"\s+", " ", c[0]).strip(" :").lower()] = re.sub(r"\s+", " ", c[1]).strip()
     times = []
-    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S | re.I):
-        if "hs-times" not in tr:
-            continue
-        first = _cells(tr)[0].lower() if _cells(tr) else ""
-        gun = "pazar" if "pazar" in first else "cumartesi" if "cumartesi" in first else "haftaici"
-        for yon, cell in enumerate(re.findall(r'<td[^>]*hs-times[^>]*>(.*?)</td>', tr, re.S | re.I)):
-            for part in re.split(r"<br\s*/?>", cell, flags=re.I):
-                t = html.unescape(re.sub(r"<[^>]+>", " ", part)).strip()
-                mm = re.match(r"(\d{1,2}):(\d{2})\s*(.*)$", t)
-                if mm:
-                    times.append((gun, yon, "%02d:%s" % (int(mm.group(1)), mm.group(2)), mm.group(3).strip()[:60]))
+    tm = re.search(r'<table[^>]*hs-table[^>]*>(.*?)</table>', body, re.S | re.I)
+    if tm:
+        trs = re.findall(r"<tr[^>]*>(.*?)</tr>", tm.group(1), re.S | re.I)
+        heads = []
+        for tr in trs:  # başlık satırı: Hafta içi | Cumartesi | Pazar
+            if "hs-times" not in tr:
+                heads = [h.lower() for h in _cells(tr)]
+                break
+        for tr in trs:
+            if "hs-times" not in tr:
+                continue
+            for idx, cell in enumerate(re.findall(r'<td[^>]*hs-times[^>]*>(.*?)</td>', tr, re.S | re.I)):
+                h = heads[idx] if idx < len(heads) else ""
+                gun = "pazar" if "pazar" in h else "cumartesi" if "cumartesi" in h else "haftaici"
+                if not h and idx in (1, 2):
+                    gun = ("cumartesi", "pazar")[idx - 1]
+                for part in re.split(r"<br\s*/?>", cell, flags=re.I):
+                    t = html.unescape(re.sub(r"<[^>]+>", " ", part)).strip()
+                    mm = re.match(r"(\d{1,2}):(\d{2})\s*(.*)$", t)
+                    if mm:
+                        note = re.sub(r"^-$", "", mm.group(3).strip())
+                        times.append((gun, 0, "%02d:%s" % (int(mm.group(1)), mm.group(2)), note[:60]))
     return {"info": info, "times": times, "stops": fetch_stops_from_html(body)}
 
 

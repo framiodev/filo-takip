@@ -43,8 +43,8 @@ class Mock(BaseHTTPRequestHandler):
             rows = "".join(f"<tr><td>{i+1}</td><td>{s}</td><td>DURAK {s}</td><td>ADRES</td></tr>" for i, s in enumerate(stops))
             page = ('<table class="hs-kv"><tr><td>Hat No</td><td>:</td><td>%s</td></tr><tr><td>Kalkış</td><td>:</td><td>UYANIŞ</td></tr>'
                     '<tr><td>Varış</td><td>:</td><td>BALGAT</td></tr><tr><td>Mesafe</td><td>:</td><td>12 km</td></tr></table>'
-                    '<table class="hs-table"><tr><td>Hafta içi</td><td class="hs-times">06:00<br>07:30 Okul<br>09:15</td><td class="hs-times">06:40<br>08:10</td></tr>'
-                    '<tr><td>Pazar</td><td class="hs-times">08:00</td></tr></table>'
+                    '<table class="hs-table"><tr><th>Hafta içi</th><th>Cumartesi</th><th>Pazar</th></tr>'
+                    '<tr><td class="hs-times">06:00<br>07:30 Okul<br>09:15 -</td><td class="hs-times">06:40<br>08:10</td><td class="hs-times">08:00</td></tr></table>'
                     '<table>%s</table>') % (hat, rows)
             b = page.encode()
         else:  # eski AjaxData adresleri canlı sitede 404 veriyor
@@ -341,6 +341,9 @@ _ki = _c.execute("SELECT kalkis, varis, mesafe FROM line_info WHERE hat='481'").
 check("hat bilgisi ayrıştı", _ki == ("UYANIŞ", "BALGAT", "12 km"))
 check("hareket saatleri ayrıştı", _c.execute("SELECT COUNT(*) FROM line_times WHERE hat='481'").fetchone()[0] == 6)
 check("saat notu", _c.execute("SELECT nt FROM line_times WHERE hat='481' AND saat='07:30'").fetchone()[0] == "Okul")
+check("gün ayrımı (başlık satırından)", _c.execute("SELECT COUNT(*) FROM line_times WHERE hat='481' AND gun='cumartesi'").fetchone()[0] == 2
+      and _c.execute("SELECT COUNT(*) FROM line_times WHERE hat='481' AND gun='pazar'").fetchone()[0] == 1)
+check("'-' notu boş", _c.execute("SELECT nt FROM line_times WHERE hat='481' AND saat='09:15'").fetchone()[0] == "")
 _c.close()
 def _get(path):
     return urllib.request.urlopen(f"http://127.0.0.1:{wp}{path}").read().decode()
@@ -355,7 +358,7 @@ _j2 = _j.loads(_get("/api/durak?no=10940"))
 check("api/durak", _j2["ok"] and _j2["yak"] and _j2["yak"][0]["dol"] == "az yoğun")
 _h = _get("/hat?no=481")
 check("hat: duraklar", "20001" in _h and "Duraklar (20)" in _h)
-check("hat: hareket saatleri", "07:30" in _h and "Hafta içi" in _h and "Pazar" in _h and "Dönüş" in _h)
+check("hat: hareket saatleri", "07:30" in _h and "Hafta içi" in _h and "Pazar" in _h and "Cumartesi" in _h)
 check("hat: bilgi", "12 km" in _h)
 check("hat: canlı araç durakta", "22-370" in _h)
 check("hat: arama", "Duraklar" in _get("/hat?q=481"))
