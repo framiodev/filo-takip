@@ -68,5 +68,25 @@ v = Z.line_vehicles(Z.E.Http(False), "446")
 ok(len(v) == 1 and v[0]["id"] == "2212" and abs(v[0]["lat"] - 38.47509333) < 1e-6 and abs(v[0]["lng"] - 27.07457833) < 1e-6, "canlı: virgüllü ondalık, enlem=KoorX, tekrar/0 temizlendi")
 ok(Z.main(["run", "--once", "--delay", "0"]) == 0, "run --once")
 ok(c.execute("SELECT COUNT(*) FROM stints WHERE hat='446'").fetchone()[0] == 1, "stint kaydı")
+# --- web: İzmir Durak sayfası (yaklaşan araçlar)
+import urllib.request
+import ego_web as W
+YAK = [{"HatNumarasi": 446, "HatAdi": "TEST", "OtobusId": 2212, "KalanDurakSayisi": 2, "HattinYonu": 1, "KoorX": "38,4110", "KoorY": "27,1230", "EngelliMi": True, "BisikletAparatliMi": False},
+       {"HatNumarasi": 5, "HatAdi": "BES", "OtobusId": 777, "KalanDurakSayisi": 0, "HattinYonu": 0, "KoorX": "38,4101", "KoorY": "27,1200"}]
+_orig = Mock.do_GET
+def _get(self):
+    if "duragayaklasanotobusler" in self.path:
+        b = json.dumps(YAK).encode(); self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+    else:
+        _orig(self)
+Mock.do_GET = _get
+os.environ["IZMIR_DB"] = Z.DB
+web = Z.E.ThreadingHTTPServer(("127.0.0.1", 0), Z.E.make_handler())
+threading.Thread(target=web.serve_forever, daemon=True).start()
+rq = urllib.request.Request("http://127.0.0.1:%d/durak?no=10005" % web.server_address[1]); rq.add_header("Cookie", "sehir=izmir")
+html_ = urllib.request.urlopen(rq).read().decode()
+ok("Yaklaşan araçlar" in html_ and "2212" in html_ and "777" in html_, "İzmir durak sayfası yaklaşan araçları gösteriyor")
+ok(html_.index("777") < html_.index("2212"), "yakın olan (777) önce sıralı")
+ok("Ankara" not in html_ and "EGO" not in html_, "İzmir durak sayfasında Ankara/EGO kalıntısı yok")
 print("\nSONUÇ:", "TÜM TESTLER GEÇTİ" if not fail else f"{fail} HATA")
 sys.exit(1 if fail else 0)

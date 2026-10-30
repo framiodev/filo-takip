@@ -7,6 +7,7 @@ import csv
 import html
 import io
 import json
+import math
 import os
 import re
 import time
@@ -802,6 +803,96 @@ document.querySelectorAll('.vmap').forEach(function(el){
         return {"no": no, "ad": ad, "hatlar": [(h, names.get(h, "")) for h in sorted(hats, key=natural_key)],
                 "yak": yak, "nxt": nxt, "gec": gec, "ok": rows is not None, "now": now}
 
+    # ------------------------------------------------------------------ İzmir: durak + resmi yaklaşan araç servisi
+    IZ_LIVE = os.environ.get("IZMIR_LIVE", "https://openapi.izmir.bel.tr/api/iztek").rstrip("/")
+    _iz_cache = {}
+
+    def _comma(v):
+        try:
+            return float(str(v).replace(",", "."))
+        except (TypeError, ValueError):
+            return None
+
+    def izmir_approaching(durak, slat, slng):
+        """Resmi servis: durağa yaklaşan otobüsler -> [{hat, ad, id, kalan, yon, m, eng, bis}] (5 sn önbellek)."""
+        hit = _iz_cache.get(durak)
+        if hit and time.time() - hit[0] < 5:
+            return hit[1]
+        try:
+            raw = E.Http(False).request(f"{IZ_LIVE}/duragayaklasanotobusler/{urllib.parse.quote(durak)}", timeout=10, retries=1,
+                                        headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0 (FiloTakip arsiv)"})
+            data = json.loads(raw.decode("utf-8", "replace"))
+        except Exception:  # noqa: BLE001
+            return None
+        out = []
+        for r in data if isinstance(data, list) else []:
+            la, lo = _comma(r.get("KoorX")), _comma(r.get("KoorY"))
+            m = None
+            if la and lo and slat is not None:
+                m = int(math.hypot((la - slat) * 111000, (lo - slng) * 111000 * math.cos(math.radians(slat))))
+            out.append({"hat": str(r.get("HatNumarasi") or ""), "ad": r.get("HatAdi") or "", "id": str(r.get("OtobusId") or ""),
+                        "kalan": r.get("KalanDurakSayisi"), "yon": r.get("HattinYonu"), "m": m,
+                        "eng": bool(r.get("EngelliMi")), "bis": bool(r.get("BisikletAparatliMi"))})
+        out.sort(key=lambda x: (x["m"] if x["m"] is not None else 10**9))
+        _iz_cache[durak] = (time.time(), out)
+        return out
+
+    def page_durak_izmir(g):
+        no, q = g("no"), g("q")
+        form = ('<form class="card form" method="get" action="/durak"><div class="field"><label>Durak adı veya numarası</label>'
+                f'<input name="q" value="{esc(q or no, True)}" placeholder="ör. {esc(city_meta()["durak_ornek"], True)}" autocomplete="off"></div>'
+                '<button class="btn">Ara</button></form>')
+        body = "<h1>Durak takibi</h1>" + form
+        conn = E.connect()
+        try:
+            if q and not no:
+                like = "%" + q.replace("%", "").replace("_", "") + "%"
+                res = conn.execute("SELECT durak, ad, (SELECT COUNT(*) FROM line_stops l WHERE l.durak=g.durak) FROM stops_geo g "
+                                   "WHERE durak=? OR ad LIKE ? ORDER BY 3 DESC LIMIT 40", (q, like)).fetchall()
+                if len(res) == 1:
+                    no = res[0][0]
+                elif not res:
+                    return layout("/durak", body + '<div class="card empty">Eşleşen durak yok.</div>', "Durak · Filo Takip")
+                else:
+                    li = "".join(f'<tr><td><a href="/durak?no={esc(d, True)}"><b>{esc(d)}</b></a></td><td>{esc(a)}</td><td>{n} hat</td></tr>' for d, a, n in res)
+                    return layout("/durak", body + f'<div class="card"><table><tbody>{li}</tbody></table></div>', "Durak · Filo Takip")
+            if not no:
+                body += note("Durağı adıyla ya da numarasıyla arayın. " + city_meta()["durak_not"], "info")
+                return layout("/durak", body, "Durak · Filo Takip")
+            st = conn.execute("SELECT ad, lat, lng FROM stops_geo WHERE durak=?", (no,)).fetchone()
+            hats = [r[0] for r in conn.execute("SELECT hat FROM line_stops WHERE durak=?", (no,))]
+            names = {r[0]: r[1] for r in conn.execute("SELECT hat, ad FROM lines")}
+        finally:
+            conn.close()
+        if not st:
+            return layout("/durak", body + '<div class="card empty">Durak bulunamadı.</div>', "Durak · Filo Takip")
+        head = f'<div class="card"><div class="vhead"><b>{esc(st[0] or "Durak")} · {esc(no)}</b></div>'
+        if hats:
+            head += '<div class="muted" style="margin-top:6px">' + " ".join(
+                f'<a class="chip" href="/hat?no={urllib.parse.quote(h)}" title="{esc(names.get(h, ""), True)}">{esc(h)}</a>'
+                for h in sorted(hats, key=natural_key)) + "</div>"
+        body += head + "</div>"
+        rows = izmir_approaching(no, st[1], st[2])
+        if rows is None:
+            body += note("İzmir canlı servisi şu an cevap vermedi; yaklaşan araçlar gösterilemiyor.")
+        elif not rows:
+            body += '<div class="card empty">Şu an bu durağa yaklaşan canlı araç görünmüyor.</div>'
+        else:
+            tr = ""
+            for y in rows:
+                kalan = "" if y["kalan"] is None else (f'{y["kalan"]} durak kaldı' if y["kalan"] > 0 else "durağa geliyor")
+                rozet = ("♿ " if y["eng"] else "") + ("🚲" if y["bis"] else "")
+                tr += (f'<tr><td><a href="/hat?no={urllib.parse.quote(y["hat"])}"><b>{esc(y["hat"])}</b></a>'
+                       f'<div class="muted" style="font-size:.78rem">{esc(y["ad"])}</div></td>'
+                       f'<td><a href="/?q={urllib.parse.quote(y["id"])}"><b>{esc(y["id"])}</b></a></td>'
+                       f'<td><b>{"-" if y["m"] is None else str(y["m"]) + " m"}</b><div class="muted" style="font-size:.78rem">{esc(kalan)}</div></td>'
+                       f'<td>{rozet}</td></tr>')
+            body += ('<div class="card"><div class="vhead"><b>Yaklaşan araçlar</b><span class="muted">canlı · resmi servis</span></div>'
+                     '<table><thead><tr><th>Hat</th><th>Araç no</th><th>Durağa uzaklık</th><th></th></tr></thead>'
+                     f'<tbody>{tr}</tbody></table></div>'
+                     '<div class="muted" style="font-size:.8rem;margin-top:6px">Uygulamadaki liste ile aynı anda karşılaştırın: aynı hat ve aynı mesafedeki araç aynı araçtır.</div>')
+        return layout("/durak", body + '<i data-live="10" hidden></i>', "Durak · Filo Takip")
+
     def page_durak(g):
         no = g("no")
         q = g("q")
@@ -1508,7 +1599,7 @@ load();loadStops();setInterval(load,60000);
                 if u.path == "/hatlar":
                     return self._send(page_hatlar(g))
                 if u.path == "/durak":
-                    return self._send(page_durak(g))
+                    return self._send(page_durak_izmir(g) if cur_city() == "izmir" else page_durak(g))
                 if u.path == "/hat":
                     return self._send(page_hat(g))
                 if u.path == "/api/durak":
