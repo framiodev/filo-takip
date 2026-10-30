@@ -74,8 +74,8 @@ tr:last-child td{border-bottom:0}
 .note.warn{background:var(--warnbg);color:var(--warn)}.note.info{background:var(--chip)}
 .empty{text-align:center;color:var(--muted);padding:28px}
 .hatrow{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.hatrow a{background:var(--chip);color:var(--ink);text-decoration:none;border-radius:999px;padding:4px 11px;font-size:.88rem}
-.hatrow a:hover{background:var(--accent);color:#fff}
+.hatrow a{background:#050505;color:#ffb000;font-family:'Pixelify Sans',Cairo,monospace;font-weight:600;letter-spacing:1px;border:2px solid #1d1d1d;text-shadow:0 0 5px rgba(255,176,0,.7);text-decoration:none;border-radius:999px;padding:4px 11px;font-size:.88rem}
+.hatrow a:hover{background:#1a1204;color:#ffd060}
 .kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
 .kv div{background:var(--chip);border-radius:12px;padding:12px 14px}
 .kv b{display:block;font-size:1.25rem}.kv span{font-size:.82rem;color:var(--muted)}
@@ -155,7 +155,7 @@ header{background:var(--bar);border-bottom:1px solid var(--line);height:var(--hh
 .btn,nav a.on,.badge{color:var(--onacc)}
 .btn{background:var(--accent)}.btn:hover{background:var(--accent2)}
 .vtabs button.on,.fr-tabs button.on{background:var(--accent)!important;border-color:var(--accent)!important;color:var(--onacc)!important}
-.hatrow a:hover,.dnav a:hover,.csvbtn:hover{background:var(--accent);color:var(--onacc)}
+.dnav a:hover,.csvbtn:hover{background:var(--accent);color:var(--onacc)}
 a{color:var(--accent)}
 .card{box-shadow:none;border-radius:14px}
 a.city:hover{box-shadow:0 4px 18px rgba(255,180,0,.15)}
@@ -1747,13 +1747,20 @@ function info(a){
 }
 function upd(a){var h=panel.querySelector('.fr-head'),i=panel.querySelector('.fr-info');if(h)h.innerHTML=head(a);if(i)i.innerHTML=info(a);}
 function sec(t,h,o){return '<button class="pc-sec" aria-expanded="'+(o?'true':'false')+'">'+t+'</button><div class="pc-body"'+(o?'':' hidden')+'>'+h+'</div>';}
-function startLed(a,hat,dest,TR){
+function ledStil(m){var T=window.TABELA||{},d=T.varsayilan||{no:'#ffb000',ust:'#ffb000',metin:'#ffb000',iki_satir:false},x=String(m||'').toLowerCase(),r=d;
+ (T.modeller||[]).some(function(k){if(k.eslesen&&x.indexOf(String(k.eslesen).toLowerCase())>=0){r=Object.assign({},d,k);return true;}return false;});return r;}
+function startLed(a,hat,dest,TR,hatAd){
  var box=panel.querySelector('.led'),t=panel.querySelector('.led-t');if(!box||!t)return;
+ var st=ledStil(a.m);box.classList.toggle('two',!!st.iki_satir);
  clearTimeout(panel._ledT);var k=0,reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
  function show(){
   if(!panel.contains(box)||selA!==a){return;}
-  var live=(selA&&selA.d)?TR(selA.d):'',txt=(k%2===1&&live)?'SIRADAKİ DURAK  '+live:hat+'  '+dest;k++;
-  t.style.animation='none';t.textContent=txt;void t.offsetWidth;
+  var live=(selA&&selA.d)?TR(selA.d):'',next=(k%2===1&&live);k++;
+  var h;
+  if(next){h=st.iki_satir?'<span class="l1" style="color:'+st.ust+'">SIRADAKİ DURAK</span><span class="l2" style="color:'+st.metin+'">'+esc(live)+'</span>':'<span class="l2" style="color:'+st.metin+'">SIRADAKİ DURAK  '+esc(live)+'</span>';}
+  else if(st.iki_satir){h='<span class="l1" style="color:'+st.ust+'">'+esc(hatAd||'')+'</span><span class="l2"><b style="color:'+st.no+'">'+esc(hat)+'</b> <span style="color:'+st.metin+'">'+esc(dest)+'</span></span>';}
+  else{h='<span class="l2"><b style="color:'+st.no+'">'+esc(hat)+'</b> <span style="color:'+st.metin+'">'+esc(dest)+'</span></span>';}
+  t.style.animation='none';t.innerHTML=h;void t.offsetWidth;
   var w=t.scrollWidth,W=box.clientWidth,ms=4200;
   if(w>W&&!reduce){var dur=Math.max(4,(w+W)/70);t.style.setProperty('--s',W+'px');t.style.setProperty('--e',w+'px');t.style.animation='ledscroll '+dur+'s linear 1';ms=dur*1000+500;}
   panel._ledT=setTimeout(show,ms);
@@ -1766,7 +1773,7 @@ function routeBlock(a){
   var f=rota[0],l=rota[rota.length-1];function cd(n){return String(n||'?').slice(0,3).toLocaleUpperCase('tr');}
   var TR=function(x){return String(x||'').toLocaleUpperCase('tr');};
   bx.innerHTML='<div class="led"><div class="led-t"></div></div><div class="led-sub"><span>'+esc(f[3]||'')+'</span><span>→</span><span>'+esc(l[3]||'')+'</span></div>';
-  startLed(a,TR(a.h),TR(l[3]||''),TR);
+  startLed(a,TR(a.h),TR(l[3]||''),TR,TR((f[3]||'')+' - '+(l[3]||'')));
   if(a.sr!=null&&l[2]>f[2]){var fr=Math.max(0,Math.min(1,(a.sr-f[2])/(l[2]-f[2])))*100;
    pg.innerHTML='<div class="bar2"><i style="width:'+fr.toFixed(0)+'%"></i></div><div class="pr"><span>'+a.sr+'. durak</span><span>%'+fr.toFixed(0)+' · toplam '+rota.length+' durak</span></div>';}
  });
@@ -1927,8 +1934,10 @@ load();loadStops();setInterval(load,60000);
 .pc-s .fr-photo{margin:0}
 .pc-rt{background:var(--chip);padding:12px 0 2px}
 .led{position:relative;background:#050505;border:3px solid #1d1d1d;border-radius:8px;margin:0 14px;height:56px;overflow:hidden;box-shadow:inset 0 0 14px #000,0 0 0 1px #3a3a3a}
-.led-t{position:absolute;top:0;left:0;height:100%;display:flex;align-items:center;white-space:nowrap;padding:0 14px;font:600 30px/1 'Pixelify Sans','DotGothic16',monospace;color:#ffb000;text-shadow:0 0 7px rgba(255,176,0,.85);letter-spacing:2px;will-change:transform}
+.led.two{height:68px}
+.led-t{position:absolute;top:0;left:0;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;white-space:nowrap;padding:0 14px;font:600 30px/1 'Pixelify Sans','DotGothic16',monospace;color:#ffb000;text-shadow:0 0 7px rgba(255,176,0,.85);letter-spacing:2px;will-change:transform}
 .led:after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 50%,transparent 36%,#050505 47%) 0 0/4px 4px}
+.led-t .l1{font-size:13px;letter-spacing:1.5px;margin-bottom:4px}.led.two .l2{font-size:27px}.led-t b{font-weight:600}
 @keyframes ledscroll{from{transform:translateX(var(--s))}to{transform:translateX(calc(-1 * var(--e)))}}
 .led-sub{display:flex;justify-content:space-between;gap:8px;padding:7px 16px 9px;font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700}
 @media(prefers-reduced-motion:reduce){.led-t{animation:none!important}}
@@ -1955,6 +1964,13 @@ load();loadStops();setInterval(load,60000);
 .fr-arrow div{color:var(--accent);font-size:20px;text-align:center;text-shadow:0 0 3px #fff}
 </style>"""
 
+    def tabela_stilleri():
+        try:
+            with open(os.path.join(_here, "tabela_stilleri.json"), encoding="utf-8") as f:
+                return json.dumps(json.load(f), ensure_ascii=False).replace("</", "<\\/")
+        except Exception:
+            return '{"varsayilan":{"no":"#ffb000","ust":"#ffb000","metin":"#ffb000","iki_satir":false},"modeller":[]}'
+
     def page_harita(g):
         body = (
             FR_CSS + '<div id="frwrap"><div class="fmap"><div id="map"></div><div id="panel"></div>'
@@ -1976,7 +1992,7 @@ load();loadStops();setInterval(load,60000);
             '<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">'
             '<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>'
             '<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>'
-            "<script>" + MAP_JS.replace("__MERKEZ__", "[%s,%s],%s" % tuple(city_meta()["merkez"])) + "</script>"
+            "<script>window.TABELA=" + tabela_stilleri() + ";</script><script>" + MAP_JS.replace("__MERKEZ__", "[%s,%s],%s" % tuple(city_meta()["merkez"])) + "</script>"
         )
         return layout("/", body, "Harita · EGO Filo Takip", mapmode=True)
 

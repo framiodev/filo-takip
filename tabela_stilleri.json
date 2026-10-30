@@ -1,0 +1,25 @@
+{
+ "_not": "Model adında 'eslesen' geçen ilk kayıt kullanılır. Renkler tahminidir; gerçek tabela fotoğrafına göre düzeltin. no: hat numarası, ust: üst satır, metin: ana satır.",
+ "varsayilan": {
+  "no": "#ffb000",
+  "ust": "#ffb000",
+  "metin": "#ffb000",
+  "iki_satir": false
+ },
+ "modeller": [
+  {
+   "eslesen": "conecto",
+   "no": "#ff7a00",
+   "ust": "#35d0ff",
+   "metin": "#ffb000",
+   "iki_satir": true
+  },
+  {
+   "eslesen": "citaro",
+   "no": "#ff7a00",
+   "ust": "#35d0ff",
+   "metin": "#ffb000",
+   "iki_satir": true
+  }
+ ]
+}
