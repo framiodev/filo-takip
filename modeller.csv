@@ -1,0 +1,11 @@
+# EGO filo kodu -> marka/model tablosu. Ayırıcı ';'. '#' ile başlayan satırlar yorumdur.
+# onek: filo kodunun başı (ör. "09-" tüm 09-xxx araçları; "24-1" yalnız 24-1xx; "09-524" tek araç). En uzun eşleşen kural kazanır.
+# durum: kesin = elle doğrulandı, tahmini = filo kodu ön ekinin üretim yılı olduğu varsayımından türetildi.
+onek;marka_model;durum
+99-;Mercedes-Benz O345 Conecto;tahmini
+06-;MAN Lion's Classic;tahmini
+07-;MAN Lion's Classic CNG (A74 / SL313);kesin
+08-;MAN Lion's Classic CNG (A74 / SL313);kesin
+09-;MAN Lion's Classic CNG (A74 / SL313);kesin
+10-;MAN Lion's Classic CNG (A74 / SL313);kesin
+11-;MAN Lion's Classic CNG (A74 / SL313);kesin

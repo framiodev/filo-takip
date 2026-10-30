@@ -1,0 +1,12 @@
+# Veri ve gizli dosyalar repoya girmez
+*.db
+*.db-wal
+*.db-shm
+*.lock
+*.log
+raporlar/
+yedek/
+__pycache__/
+.ssh/
+.env
+stops.txt
