@@ -129,6 +129,71 @@ a.city:hover{border-color:var(--accent);box-shadow:0 4px 18px rgba(200,16,46,.15
 .fgrid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end}
 @media(max-width:760px){.fgrid{grid-template-columns:1fr 1fr}.fgrid .field.grow{grid-column:1/-1}}
 select{width:100%;padding:12px 13px;font-size:1rem;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+
+/* ===== Radar teması (Flightradar tarzı): koyu, harita öncelikli ===== */
+:root{--bg:#0a111c;--card:#121c2c;--ink:#e8edf5;--muted:#8d9bb2;--line:#22304a;--accent:#ffb400;--accent2:#e6a200;--onacc:#16120a;
+--ok:#5ee08a;--okbg:#10301e;--bad:#ff9b9b;--badbg:#341418;--warn:#f1d27a;--warnbg:#2f2610;--chip:#1a2740;--hh:56px;--rail:78px}
+@media (prefers-color-scheme:light){:root{--bg:#0a111c;--card:#121c2c;--ink:#e8edf5;--muted:#8d9bb2;--line:#22304a;--chip:#1a2740}}
+body{color-scheme:dark}
+header{background:#0c1424;border-bottom:1px solid var(--line);height:var(--hh)}
+.bar{max-width:none;height:var(--hh);padding:0 14px;gap:12px;flex-wrap:nowrap}
+.brand{font-size:1rem;white-space:nowrap}
+.logo{background:var(--accent);color:var(--onacc);border-radius:9px}
+.hsearch{flex:1;max-width:560px;position:relative;margin:0}
+.hsearch input{height:38px;padding:0 14px 0 36px;border-radius:999px;background:#0a111c;border:1px solid var(--line);font-size:.95rem}
+.hsearch:before{content:"🔍";position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:.85rem;opacity:.7;pointer-events:none}
+.hsearch input:focus{outline:2px solid var(--accent);outline-offset:0}
+.citychip{background:var(--chip);color:var(--ink)}
+.pill{margin-left:auto}
+.btn,nav a.on,.badge{color:var(--onacc)}
+.btn{background:var(--accent)}.btn:hover{background:var(--accent2)}
+.vtabs button.on,.fr-tabs button.on{background:var(--accent)!important;border-color:var(--accent)!important;color:var(--onacc)!important}
+.hatrow a:hover,.dnav a:hover,.csvbtn:hover{background:var(--accent);color:var(--onacc)}
+a{color:var(--accent)}
+.card{box-shadow:none;border-radius:14px}
+a.city:hover{box-shadow:0 4px 18px rgba(255,180,0,.15)}
+.fr-plate{border-color:var(--accent);color:var(--accent)}
+.fr-arrow div{color:var(--accent)!important;text-shadow:0 0 3px #000!important}
+.leaflet-container{background:#0b1220}
+@media (min-width:761px){
+ nav{position:fixed;left:0;top:var(--hh);bottom:0;width:var(--rail);z-index:1900;flex:none;order:0;flex-direction:column;flex-wrap:nowrap;gap:2px;margin:0;padding:10px 6px;
+  background:#0c1424;border-top:0;border-right:1px solid var(--line);overflow:auto}
+ nav a i{display:block;font-size:1.3rem;line-height:1}
+ nav a{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 2px;border-radius:12px;font-size:.66rem;white-space:normal;text-align:center}
+ nav a.on{background:var(--accent)}
+ main{margin-left:var(--rail);max-width:1100px}
+ footer{margin-left:var(--rail)}
+}
+@media (max-width:760px){
+ header{background:#0c1424;padding-top:env(safe-area-inset-top);height:auto}
+ .bar{height:var(--hh);padding:0 10px;gap:8px}
+ .brand{font-size:0}.logo{font-size:.9rem}
+ .brand{color:var(--ink)}
+ .hsearch{max-width:none}
+ .citychip{background:var(--chip);color:var(--ink)}
+ header .pill{display:none}
+ nav{background:#0c1424;border-top:1px solid var(--line)}
+ nav a.on{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+}
+/* tam ekran harita modu */
+body.mapmode main{max-width:none;margin:0;padding:0}
+body.mapmode footer{display:none}
+body.mapmode #frwrap{position:fixed;top:var(--hh);left:var(--rail);right:0;bottom:0;z-index:10}
+@media (max-width:760px){body.mapmode #frwrap{left:0;bottom:calc(62px + env(safe-area-inset-bottom));top:calc(var(--hh) + env(safe-area-inset-top))}}
+body.mapmode .fmap{position:absolute;inset:0}
+body.mapmode #map{position:absolute;inset:0;height:100%!important;min-height:0!important;border:0!important;border-radius:0!important}
+.fr-filters{position:absolute;top:12px;left:12px;z-index:1400;max-width:calc(100% - 24px)}
+.fr-filters>button{padding:8px 14px;border-radius:999px;border:1px solid var(--line);background:rgba(18,28,44,.94);color:var(--ink);font:inherit;font-size:.88rem;font-weight:600;cursor:pointer;backdrop-filter:blur(6px)}
+.fr-filters .fbox{display:none;margin-top:8px;padding:12px;width:290px;max-width:100%;background:rgba(18,28,44,.96);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(8px);gap:10px;flex-direction:column}
+.fr-filters.open .fbox{display:flex}
+.fr-filters .fbox input[type=text],.fr-filters .fbox input:not([type]),.fr-filters .fbox input[type=number],.fr-filters .fbox select{height:38px;padding:0 10px}
+.fr-count{position:absolute;left:12px;bottom:12px;z-index:1400;padding:7px 13px;border-radius:999px;background:rgba(18,28,44,.94);border:1px solid var(--line);font-size:.82rem;color:var(--muted);max-width:calc(100% - 24px)}
+.fr-count b{color:var(--accent)}
+body.mapmode #panel{top:12px;right:12px;bottom:12px;background:rgba(18,28,44,.97);backdrop-filter:blur(8px)}
+@media(max-width:700px){body.mapmode #panel{top:auto;left:8px;right:8px;bottom:8px;max-height:56%}.fr-count{bottom:auto;top:56px;left:12px}.fr-filters{top:12px}}
+body.mapmode .fr-count{left:auto;right:12px;bottom:12px}
+body.mapmode #panel[style*="block"]~.fr-count{display:none}
+body.mapmode .leaflet-control-zoom{margin-top:60px}
 """
 
 ICON = (
@@ -149,7 +214,7 @@ MANIFEST = {
               {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}],
 }
 
-TABS = [("/", "Sorgula", "🔍"), ("/harita", "Harita", "🗺️"), ("/gun", "Gün özeti", "📅"), ("/durak", "Durak", "🚏"), ("/hat", "Hat", "🚍"), ("/hatlar", "İlk hatlar", "📊"), ("/modeller", "Modeller", "🚌"), ("/raporlar", "Raporlar", "📄"), ("/durum", "Durum", "📶")]
+TABS = [("/", "Harita", "🗺️"), ("/ara", "Sorgula", "🔍"), ("/gun", "Gün özeti", "📅"), ("/durak", "Durak", "🚏"), ("/hat", "Hat", "🚍"), ("/hatlar", "İlk hatlar", "📊"), ("/modeller", "Modeller", "🚌"), ("/raporlar", "Raporlar", "📄"), ("/durum", "Durum", "📶")]
 
 DESK_ONLY = {"/raporlar", "/modeller", "/hatlar", "/eslesme"}  # dar ekranda alt çubuktan gizlenir (Durum sayfasından erişilir)
 
@@ -329,7 +394,7 @@ def make_handler(E):
             html_text = html_text.replace(a, b)
         return html_text
 
-    def layout(active, body, title="EGO Filo Takip", picker=False):
+    def layout(active, body, title="EGO Filo Takip", picker=False, mapmode=False):
         if picker:
             nav, chip, status = "", "", ""
         else:
@@ -338,15 +403,23 @@ def make_handler(E):
                 for h, t, ic in (TABS + ([("/eslesme", "Eşleme", "🔗")] if cur_city() == "izmir" else [])))
             chip = '<a class="citychip" href="/sehir" title="Şehri değiştir">📍 %s ▾</a>' % esc(CITY_BY_ID[cur_city()]["ad"])
             status = status_chip()
+        if picker:
+            hs = ""
+        elif mapmode:
+            hs = ('<form class="hsearch" onsubmit="return false"><input id="q" placeholder="Filo kodu, plaka, hat ara…" '
+                  'autocomplete="off" aria-label="Ara"></form>')
+        else:
+            hs = ('<form class="hsearch" method="get" action="/ara"><input name="q" placeholder="Filo kodu veya plaka ara…" '
+                  'autocomplete="off" aria-label="Ara" required></form>')
         return localize(
             '<!doctype html><html lang="tr"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
             '<meta name="theme-color" content="#c8102e"><meta name="mobile-web-app-capable" content="yes">'
             '<meta name="apple-mobile-web-app-capable" content="yes"><link rel="manifest" href="/manifest.json">'
             '<link rel="icon" href="/icon.svg" type="image/svg+xml">'
-            f"<title>{esc(title.replace('EGO Filo Takip', city_meta()['kisa'] + ' Filo Takip'))}</title><style>{CSS}</style></head><body>"
+            f"<title>{esc(title.replace('EGO Filo Takip', city_meta()['kisa'] + ' Filo Takip'))}</title><style>{CSS}</style></head><body{' class=\"mapmode\"' if mapmode else ''}>"
             '<header><div class="bar"><a class="brand" href="/"><span class="logo">🚌</span>Filo Takip</a>'
-            f"{chip}<nav>{nav}</nav>{status}</div></header><main>{body}</main>"
+            f"{hs}{chip}<nav>{nav}</nav>{status}</div></header><main>{body}</main>"
             "<footer>Resmi olmayan, ticari amaç gütmeyen kişisel arşiv. Veri: " + city_meta()["kaynak"] + ". "
             "Durak saatleri gözlemler arası ara değerle tahmin edilir.</footer>" + SOFT_REFRESH + "</body></html>"
         )
@@ -354,7 +427,7 @@ def make_handler(E):
     # ------------------------------------------------------------------ Araç sorgula
     def form_ara(q, tarih, saat, tol):
         return (
-            '<form class="card form" method="get" action="/">'
+            '<form class="card form" method="get" action="/ara">'
             '<div class="field grow"><label>Filo kodu veya plaka</label>'
             f'<input name="q" value="{esc(q, True)}" placeholder="{esc(city_meta()["ornek"], True)}" required autofocus autocomplete="off"></div>'
             f'<div class="field"><label>Tarih</label><input type="date" name="tarih" value="{esc(tarih, True)}"></div>'
@@ -420,7 +493,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){retur
 function ago(e){var m=Math.max(0,Math.round((Date.now()/1000-e)/60));return m<120?m+' dk önce':'';}
 document.querySelectorAll('.vmap').forEach(function(el){
  var g=JSON.parse(el.getAttribute('data-geo')),map=L.map(el,{preferCanvas:true});
- L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19,attribution:'&copy; OpenStreetMap &copy; CARTO'}).addTo(map);
  var all=[],last=null,lastHat=g.h||'';
  var nt=g.trips.length,groups=[],vlast=null,tabs=document.createElement('div');
  tabs.className='vtabs';
@@ -624,7 +697,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
             body += '<i data-live="60" hidden></i>'
         if 'class="vmap"' in body:
             body += map_assets()
-        return layout("/", body)
+        return layout("/ara", body)
 
     # ------------------------------------------------------------------ Ortak veri yardımcıları
     def _tips():
@@ -1549,7 +1622,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
     MAP_JS = """
 (function(){
 var map=L.map('map',{preferCanvas:true}).setView(__MERKEZ__);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19,attribution:'&copy; OpenStreetMap &copy; CARTO'}).addTo(map);
 var layer=(L.markerClusterGroup?L.markerClusterGroup({disableClusteringAtZoom:15,maxClusterRadius:45,showCoverageOnHover:false,chunkedLoading:true}):L.layerGroup()).addTo(map),data=[];
 if(!layer.addLayers){layer.addLayers=function(a){a.forEach(function(x){layer.addLayer(x);});};layer.zoomToShowLayer=function(m,f){f();};}
 function $(i){return document.getElementById(i);}
@@ -1630,13 +1703,13 @@ function draw(){
   if(tp&&(a.tp||'')!==tp)return;
   var isLive=a.age<=15; if(onlyLive&&!isLive)return;
   shown++; if(isLive)live++;
-  var m=L.circleMarker([a.la,a.lo],{radius:isLive?7:5,color:isLive?'#166534':'#6b7280',fillColor:isLive?'#22c55e':'#9ca3af',fillOpacity:isLive?.9:.6,weight:1});
+  var m=L.circleMarker([a.la,a.lo],{radius:isLive?7:5,color:isLive?'#000':'#2b3850',fillColor:isLive?'#ffb400':'#5b6b85',fillOpacity:isLive?.95:.7,weight:1});
   m.on('click',function(){openPanel(a,m);});
   if(selA&&a.p===selA.p){selM=m;selA=a;styleOf(m,a,true);}
   ms.push(m); b.push([a.la,a.lo]);
  });
  layer.addLayers(ms);
- $('cnt').textContent=shown+' araç gösteriliyor, '+live+' tanesi canlı (son 15 dk)';
+ $('cnt').innerHTML='<b>'+shown+'</b> araç · <b>'+live+'</b> canlı';
  if(selA&&panel.style.display==='block'){var hd=panel.querySelector('.fr-head');if(hd)hd.innerHTML=head(selA);}
  if((q||hat)&&b.length&&b.length<=30)map.fitBounds(b,{maxZoom:15,padding:[40,40]});
 }
@@ -1662,6 +1735,7 @@ function load(){
 ['q','hat'].forEach(function(i){$(i).addEventListener('input',draw);});
 ['op','tip','live'].forEach(function(i){$(i).addEventListener('change',draw);});
 $('saat').addEventListener('change',load);
+$('ftog').onclick=function(){$('flt').classList.toggle('open');};
 $('full').onclick=function(){var w=$('frwrap'),on=!w.classList.contains('full');w.classList.toggle('full',on);document.body.style.overflow=on?'hidden':'';$('full').textContent=on?'✕ Tam ekrandan çık':'⛶ Tam ekran';setTimeout(function(){map.invalidateSize();},60);};
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){if($('frwrap').classList.contains('full'))$('full').onclick();else closePanel();}});
 map.on('click',function(){});
@@ -1699,9 +1773,8 @@ load();loadStops();setInterval(load,60000);
 
     def page_harita(g):
         body = (
-            FR_CSS + '<h1>Harita</h1><div id="frwrap">'
-            '<div class="card fgrid">'
-            '<div class="field grow"><label>Filo kodu, plaka, model veya hat (arama)</label><input id="q" placeholder="' + esc(city_meta()["ornek"], True) + '" autocomplete="off"></div>'
+            FR_CSS + '<div id="frwrap"><div class="fmap"><div id="map"></div><div id="panel"></div>'
+            '<div class="fr-filters" id="flt"><button type="button" id="ftog">⚙ Filtreler</button><div class="fbox">'
             '<div class="field"><label>Tam hat</label><input id="hat" placeholder="' + esc(city_meta()["hat_ornek"].split(" ")[0], True) + '" autocomplete="off"></div>'
             + ('<div class="field"><label>İşletme</label><select id="op"><option value="">Tümü</option><option value="ego">EGO</option>'
                '<option value="oho">ÖHO / Halk otobüsü (06 HO)</option></select></div>' if cur_city() == "ankara"
@@ -1709,12 +1782,10 @@ load();loadStops();setInterval(load,60000);
             + ('<div class="field"><label>Tip</label><select id="tip"><option value="">Tümü</option><option value="Körüklü">Körüklü</option>'
                '<option value="Solo">Solo</option></select></div>' if cur_city() == "ankara" else '<input type="hidden" id="tip" value="">') +
             '<div class="field"><label>Son kaç saat</label><input id="saat" type="number" value="24" min="1" max="168"></div>'
-            '<div class="field"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input id="live" type="checkbox" style="width:auto"> yalnız canlı</label></div></div>'
-            '<div class="fr-bar"><span class="muted" id="cnt">Yükleniyor…</span><button type="button" id="full">⛶ Tam ekran</button></div>'
-            '<div class="fmap"><div id="map" style="height:68vh;isolation:isolate;min-height:360px;border-radius:16px;border:1px solid var(--line)"></div>'
-            '<div id="panel"></div></div></div>'
-            '<p class="muted">Araca tıklayınca sağda ayrıntılar ve bugünkü seferlerin izi açılır; ▲ oku aracın gittiği yönü gösterir. Yeşil: son 15 dakikada görüldü. Gri: çalışmıyor veya veri yok, son bilinen konum. Kalabalık bölgelerde araçlar '
-            'sayıyla gruplanır; yaklaştıkça tek tek görünür. Veri taramalar arasında güncellenir (yaklaşık 1-5 dk). Yakınlaştırınca (15+) mavi duraklar görünür. Kısayol: Esc paneli kapatır.</p>'
+            '<label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input id="live" type="checkbox" style="width:auto"> yalnız canlı araçlar</label>'
+            '</div></div>'
+            '<div class="fr-count"><span id="cnt">Yükleniyor…</span></div><button type="button" id="full" hidden></button>'
+            '</div></div>'
             '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">'
             '<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">'
             '<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">'
@@ -1722,7 +1793,7 @@ load();loadStops();setInterval(load,60000);
             '<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>'
             "<script>" + MAP_JS.replace("__MERKEZ__", "[%s,%s],%s" % tuple(city_meta()["merkez"])) + "</script>"
         )
-        return layout("/harita", body, "Harita · EGO Filo Takip")
+        return layout("/", body, "Harita · EGO Filo Takip", mapmode=True)
 
 
     # ------------------------------------------------------------------ Modeller (marka/model yönetimi)
@@ -1855,6 +1926,8 @@ load();loadStops();setInterval(load,60000);
                 if u.path == "/":
                     if not g("q") and not self._sehir():
                         return self._send(page_sehir(g))
+                    return self._send(page_ara(g) if g("q") else page_harita(g))
+                if u.path == "/ara":
                     return self._send(page_ara(g))
                 if u.path == "/sehir":
                     return self._send(page_sehir(g))
