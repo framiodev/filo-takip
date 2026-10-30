@@ -239,6 +239,16 @@ check("harita sayfası", "leaflet" in hp_ and 'id="map"' in hp_)
 gun_ = urllib.request.urlopen(f"http://127.0.0.1:{wp}/gun?tarih=2026-11-03").read().decode()
 check("gün özeti açılıyor", "<h1>Gün özeti" in gun_ and "Hata:" not in gun_)
 check("araç durum rozeti", "Listede yok" in page4 or "Şu an hatta" in page4)
+import html as _html
+_m = re.search(r'class="vmap" data-geo="([^"]*)"', page4) if (re := __import__("re")) else None
+_geo = _j.loads(_html.unescape(_m.group(1))) if _m else {}
+check("sorgu sonucunda araç haritası (güzergâh noktaları)", bool(_geo.get("trips")) and len(_geo["trips"][0]["p"][0]) == 4 and "leaflet" in page4)
+_pw = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=EGO-22-370&tarih=2026-11-02&saat=09:15&tol=30").read().decode()
+check("saatli sorguda da harita kutusu", 'class="vmap"' in _pw)
+_pn = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=09-524&tarih=2026-12-25").read().decode()
+check("kayıt olmayan günde son bilinen konum", '"son": {' in _html.unescape(_pn) and 'class="vmap"' in _pn)
+_hq = urllib.request.urlopen(f"http://127.0.0.1:{wp}/harita?q=09-524").read().decode()
+check("büyük harita ?q= ile açılıyor", "URLSearchParams" in _hq)
 
 # --- yeni özellikler: ilk hatlar, CSV, geçmiş kartı, harita filtreleri, şehir seçimi
 _base = f"http://127.0.0.1:{wp}"

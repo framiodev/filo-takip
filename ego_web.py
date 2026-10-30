@@ -116,6 +116,8 @@ a.city:hover{border-color:var(--accent);box-shadow:0 4px 18px rgba(200,16,46,.15
 .dnav a,.csvbtn{background:var(--chip);color:var(--ink);text-decoration:none;border-radius:999px;padding:6px 13px;font-size:.88rem;font-weight:600}
 .dnav a:hover,.csvbtn:hover{background:var(--accent);color:#fff}
 .csvbtn{display:inline-block;margin-left:auto}
+.vmap{height:300px;border-radius:14px;border:1px solid var(--line);margin:2px 0 4px}
+.vmapwrap{margin:4px 0 12px}.vlive{width:auto!important;min-height:0!important}
 .bar2{height:8px;border-radius:99px;background:var(--chip);overflow:hidden;min-width:70px}
 .bar2 i{display:block;height:100%;background:var(--accent);border-radius:99px}
 .fgrid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end}
@@ -338,6 +340,84 @@ def make_handler(E):
         return (f'<span class="pill bad" title="EGO listesinde şu an yok (hatta değil, garajda ya da veri yok)">'
                 f'● Listede yok · son: hat {esc(r[0])}, {fmt(r[1], True)} ({when})</span>')
 
+    # ------------------------------------------------------------------ Araç haritası (sorgu sonucunda)
+    VMAP_JS = """
+(function(){
+var cols=['#c8102e','#1d4ed8','#15803d','#b45309','#7c3aed','#0e7490'];
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
+function ago(e){var m=Math.max(0,Math.round((Date.now()/1000-e)/60));return m<120?m+' dk önce':'';}
+document.querySelectorAll('.vmap').forEach(function(el){
+ var g=JSON.parse(el.getAttribute('data-geo')),map=L.map(el,{preferCanvas:true});
+ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+ var all=[],last=null,lastHat=g.h||'';
+ g.trips.forEach(function(t,i){
+  var c=cols[i%cols.length],ll=t.p.map(function(x){return [x[0],x[1]];});all=all.concat(ll);
+  L.polyline(ll,{color:c,weight:4,opacity:.75}).addTo(map).bindTooltip('Sefer '+(i+1)+' · Hat '+esc(t.h));
+  t.p.forEach(function(x){L.circleMarker([x[0],x[1]],{radius:3,color:c,weight:1,fillColor:c,fillOpacity:.9}).addTo(map).bindTooltip(esc(x[2])+' · Hat '+esc(t.h));});
+  L.circleMarker(ll[0],{radius:6,color:'#fff',weight:2,fillColor:c,fillOpacity:1}).addTo(map).bindTooltip('Sefer '+(i+1)+' başlangıç '+esc(t.p[0][2]));
+  last=t.p[t.p.length-1];lastHat=t.h;
+ });
+ var label='';
+ if(last){label='Son konum '+last[2]+(g.bugun&&ago(last[3])?' ('+ago(last[3])+')':'');}
+ else if(g.son){last=[g.son.la,g.son.lo,g.son.t,g.son.e];lastHat=g.son.h;all.push([g.son.la,g.son.lo]);label='Son bilinen konum '+g.son.t+' · Hat '+g.son.h;}
+ if(!last){el.style.display='none';return;}
+ var mk=L.circleMarker([last[0],last[1]],{radius:10,color:'#fff',weight:3,fillColor:'#c8102e',fillOpacity:1}).addTo(map);
+ mk.bindTooltip(esc(label),{permanent:true,direction:'top',offset:[0,-8]});
+ all.push([last[0],last[1]]);
+ map.fitBounds(all,{padding:[34,34],maxZoom:16});
+ var btn=el.parentNode.querySelector('.vlive');
+ if(btn&&g.bugun){btn.style.display='';btn.onclick=function(){
+  var st=el.parentNode.querySelector('.vlives');btn.disabled=true;st.textContent=' alınıyor…';
+  fetch('/api/canli?hat='+encodeURIComponent(lastHat)).then(function(r){return r.json()}).then(function(j){
+   var n=(j.araclar||[]).filter(function(x){return (g.f&&x.f===g.f)||x.p.replace(/ /g,'')===g.p.replace(/ /g,'');})[0];
+   btn.disabled=false;
+   if(!n){st.textContent=j.hata?' '+j.hata:' araç şu an bu hatta listede yok';return;}
+   mk.setLatLng([n.la,n.lo]);mk.setTooltipContent('Anlık konum '+esc(n.t.slice(-5))+' ('+n.age+' dk önce)');
+   map.panTo([n.la,n.lo]);st.textContent=' güncellendi';
+  }).catch(function(){btn.disabled=false;st.textContent=' alınamadı';});
+ };}
+});
+})();
+"""
+
+    def vehicle_map(v, bugun, window_items=None):
+        """Araç kartı için harita kutusu; konum yoksa son bilinen konuma düşer, hiç yoksa boş döner."""
+        trips = []
+        if window_items is not None:
+            for it in window_items:
+                pos = it.get("pos")
+                if pos and pos[1] and pos[2]:
+                    trips.append({"h": it["hat"], "p": [[round(pos[1], 5), round(pos[2], 5), fmt(pos[0], False), pos[0]]]})
+        else:
+            for tr in v["trips"]:
+                pts = [[round(x["lat"], 5), round(x["lng"], 5), fmt(x["t"], False), x["t"]]
+                       for x in tr["samples"] if x["lat"] and x["lng"]]
+                if pts:
+                    trips.append({"h": tr["hat"], "p": pts})
+        son = None
+        if not trips:
+            conn = E.connect()
+            try:
+                r = conn.execute("SELECT COALESCE(kts, ts), hat, lat, lng FROM sightings WHERE plaka=? AND lat IS NOT NULL "
+                                 "AND lat<>0 ORDER BY ts DESC LIMIT 1", (v["plaka"],)).fetchone()
+            finally:
+                conn.close()
+            if r:
+                son = {"t": fmt(r[0], True), "e": r[0], "h": r[1], "la": round(r[2], 5), "lo": round(r[3], 5)}
+        if not trips and not son:
+            return ""
+        geo = {"p": E.pretty_plate(v["plaka"]), "f": v.get("arac_no") or "", "trips": trips, "son": son, "bugun": bool(bugun)}
+        big = urllib.parse.quote(v.get("arac_no") or E.pretty_plate(v["plaka"]))
+        return (f'<div class="vmapwrap"><div class="vmap" data-geo="{esc(json.dumps(geo, ensure_ascii=False), True)}"></div>'
+                f'<div class="dnav" style="margin:8px 0 0"><a href="/harita?q={big}">Büyük haritada aç</a>'
+                + ('<button type="button" class="btn vlive" style="display:none;padding:6px 13px;font-size:.88rem">Anlık konumu al</button>'
+                   '<span class="muted vlives"></span>' if bugun else "") + "</div></div>")
+
+    def map_assets():
+        return ('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">'
+                '<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>'
+                "<script>if(window.L){" + VMAP_JS + "}</script>")
+
     def render_day(res):
         out = [note(w) for w in res["warnings"]]
         if res["vehicles"] and res["kind"] == "yaklasik":
@@ -353,6 +433,7 @@ def make_handler(E):
                      f'{model_chip(v["arac_no"], v["plaka"])}'
                      f'<span class="muted">{len(trips)} sefer · {esc(res["day"].strftime("%d.%m.%Y"))}</span>'
                      f'{vehicle_status(v["plaka"])}</div>']
+            parts.append(vehicle_map(v, res["day"] == today()))
             if not trips and not v["stints"]:
                 parts.append('<p class="muted">Bu tarihte kayıt yok.</p>')
             for st in v["stints"]:
@@ -397,6 +478,7 @@ def make_handler(E):
         for v in res["vehicles"]:
             parts = [f'<div class="vhead"><span class="plate">{esc(E.pretty_plate(v["plaka"]))}</span>'
                      f'<span class="chip">Filo {esc(v["arac_no"] or "-")}</span></div>']
+            parts.append(vehicle_map(v, False, v["items"]))
             if v["items"]:
                 rows = ""
                 for it in v["items"]:
@@ -434,6 +516,8 @@ def make_handler(E):
         else:
             body += '<div class="card empty">Bir filo kodu (ör. <b>09-524</b>) ya da plaka yazın, tarihi seçin.<br>' \
                     'Saat boş bırakılırsa o günün tüm seferleri ve durak saatleri gelir.</div>'
+        if 'class="vmap"' in body:
+            body += map_assets()
         return layout("/", body)
 
     # ------------------------------------------------------------------ Ortak veri yardımcıları
@@ -894,6 +978,7 @@ function load(){
 ['q','hat'].forEach(function(i){$(i).addEventListener('input',draw);});
 ['op','tip','live'].forEach(function(i){$(i).addEventListener('change',draw);});
 $('saat').addEventListener('change',load);
+var u=new URLSearchParams(location.search);if(u.get('q'))$('q').value=u.get('q');
 load();setInterval(load,60000);
 })();
 """
