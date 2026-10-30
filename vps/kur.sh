@@ -168,6 +168,14 @@ ${DOMAIN:-:80} {
   reverse_proxy 127.0.0.1:8000
 }
 CADDY
+if [ -n "$DOMAIN" ]; then
+  cat >> /etc/caddy/Caddyfile <<CADDY
+
+www.$DOMAIN {
+  redir https://$DOMAIN{uri} permanent
+}
+CADDY
+fi
 
 echo "== Güvenlik duvarı"
 ufw allow OpenSSH >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; ufw --force enable >/dev/null
