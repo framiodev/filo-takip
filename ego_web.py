@@ -289,6 +289,20 @@ def make_handler(E):
     def note(text, kind="warn"):
         return f'<div class="note {kind}">{esc(text)}</div>'
 
+    def progress_info():
+        """Devam eden turun ilerlemesi (meta 'progress'); 10 dakikadan eskiyse yok sayılır."""
+        try:
+            conn = E.connect()
+            row = conn.execute("SELECT v FROM meta WHERE k='progress'").fetchone()
+            conn.close()
+            pr = json.loads(row[0]) if row else None
+        except Exception:  # noqa: BLE001
+            return None
+        if pr and pr.get("total") and E.now_ts() - pr["ts"] <= 600:
+            pr["pct"] = min(100, int(100 * pr["n"] / pr["total"]))
+            return pr
+        return None
+
     def status_chip():
         try:
             conn = E.connect()
@@ -296,6 +310,9 @@ def make_handler(E):
             conn.close()
         except Exception:
             return '<span class="pill bad">Veritabanı okunamadı</span>'
+        pr = progress_info()
+        if not row and pr:
+            return f'<span class="pill ok" title="{pr["veh"]} araç">● İlk tarama sürüyor · %{pr["pct"]}</span>'
         if not row:
             return '<span class="pill bad">Toplayıcı henüz çalışmadı</span>'
         c = json.loads(row[0])
@@ -1355,7 +1372,15 @@ document.querySelectorAll('.vmap').forEach(function(el){
             (f"{mb} MB", "Veritabanı boyutu"),
         ]
         grid = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for v, k in cells)
-        body = ("<h1>Durum</h1>" + f'<div class="card"><div class="kv">{grid}</div></div>'
+        pr = progress_info()
+        bar = ""
+        if pr:
+            gecen = max(1, E.now_ts() - pr["t0"])
+            kalan = int(gecen * (pr["total"] - pr["n"]) / max(1, pr["n"]) / 60)
+            bar = (f'<div class="card"><div class="vhead"><b>Tarama sürüyor</b><span class="muted">%{pr["pct"]} · {pr["n"]}/{pr["total"]} hat · '
+                   f'{pr["veh"]} araç · {pr["fails"]} hata · yaklaşık {kalan} dk kaldı</span></div>'
+                   f'<div style="height:12px;border-radius:8px;background:var(--line);overflow:hidden"><div style="height:100%;width:{pr["pct"]}%;background:var(--ok,#2e9e5b)"></div></div></div>')
+        body = ("<h1>Durum</h1>" + bar + f'<div class="card"><div class="kv">{grid}</div></div>'
                 '<div class="dnav"><a href="/raporlar">Günlük raporlar</a><a href="/sehir">Şehir değiştir</a></div>'
                 f'<p class="muted">Veritabanı: {esc(getattr(E.CITY_CTX, "db", None) or E.DB_PATH)}</p>')
         return layout("/durum", body + '<i data-live="30" hidden></i>', "Durum · EGO Filo Takip")

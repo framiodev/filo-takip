@@ -243,6 +243,13 @@ def cmd_init(args):
     return 0
 
 
+def _progress(conn, n, total, veh, fails, t0):
+    """Tur ilerlemesini meta'ya yazar; web arayüzü yüzde olarak gösterir."""
+    conn.execute("INSERT OR REPLACE INTO meta (k, v) VALUES ('progress', ?)",
+                 (json.dumps({"ts": E.now_ts(), "n": n, "total": total, "veh": veh, "fails": fails, "t0": int(t0)}),))
+    conn.commit()
+
+
 def cmd_run(args):
     conn = connect()
     http = E.Http(args.insecure)
@@ -289,6 +296,8 @@ def cmd_run(args):
             for n, (kod, rows) in enumerate(pool.map(_fetch, due), 1):
                 if STOP.is_set():
                     break
+                if n == 1 or n % 10 == 0:
+                    _progress(conn, n, len(due), veh, fails, t0)
                 if n == 1 or (rows is None and fails < 3):
                     print(f"  ilk sonuç: hat {kod} -> {None if rows is None else len(rows)} araç ({int(time.time() - t0)} sn) {soap.last_error if rows is None else ''}", flush=True)
                 if rows is None:
@@ -315,6 +324,7 @@ def cmd_run(args):
             fl_ts = 0.0
             continue
         backoff = 0
+        conn.execute("DELETE FROM meta WHERE k='progress'")
         conn.execute("INSERT OR REPLACE INTO meta (k, v) VALUES ('last_cycle', ?)",
                      (json.dumps({"ts": E.now_ts(), "due": len(due), "vehicles": veh, "fails": fails, "interval": args.interval,
                                   "fleet": len(fl)}),))

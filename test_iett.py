@@ -83,5 +83,15 @@ check("run: son tur meta", json.loads(c.execute("SELECT v FROM meta WHERE k='las
 T.main(["saatler"])
 c = T.connect()
 check("planlanan saatler", sorted(c.execute("SELECT hat, gun, saat FROM line_times").fetchall()) == [("500T D", "pazar", "07:40"), ("500T G", "haftaici", "06:15")])
+check("run: tur bitince ilerleme kaydı temizlendi", c.execute("SELECT COUNT(*) FROM meta WHERE k='progress'").fetchone()[0] == 0)
+# ilerleme yüzdesi web arayüzünde
+import urllib.request
+import ego_web  # noqa: F401,E402
+T._progress(c, 50, 100, 40, 1, int(__import__("time").time()) - 60)
+web = T.E.ThreadingHTTPServer(("127.0.0.1", 0), T.E.make_handler())
+threading.Thread(target=web.serve_forever, daemon=True).start()
+rq = urllib.request.Request("http://127.0.0.1:%d/durum" % web.server_address[1]); rq.add_header("Cookie", "sehir=istanbul")
+pg = urllib.request.urlopen(rq).read().decode()
+check("durum sayfasında tarama yüzdesi", "Tarama sürüyor" in pg and "%50" in pg and "50/100 hat" in pg)
 print("\nSONUÇ:", "TÜM TESTLER GEÇTİ" if ok else "BAŞARISIZ")
 sys.exit(0 if ok else 1)
