@@ -141,7 +141,7 @@ def to_ego_row(r, fl, sira_of):
     kod, yon = str(r.get("hatkodu") or "").strip(), yon_of(r)
     durak = str(r.get("yakinDurakKodu") or "").strip()
     return {
-        "arac_no": kapi, "plaka_no": f.get("plaka", ""),
+        "arac_no": kapi, "plaka_no": f.get("plaka") or kapi,
         "lat": r.get("enlem"), "lng": r.get("boylam"), "hiz": f.get("hiz", ""),
         "durak_no": durak, "durak_sira_no": sira_of.get((hat_key(kod, yon), durak), ""),
         "konum_tarihi": r.get("son_konum_zamani", ""), "detay": "",
@@ -253,15 +253,20 @@ def cmd_run(args):
     sira_of = {(h, d): s for h, d, s in conn.execute("SELECT hat, durak, sira FROM line_route")}
     gap = int(args.interval * 60 * 3)
     idle = {}
+    fl_warned, last_fl = False, {}
     print(f"İETT toplayıcı: {len(kods)} hat, {args.interval} dk aralık.", flush=True)
     while not STOP.is_set():
         t0 = time.time()
         ts = E.now_ts()
         fl = fleet(http)
         if fl is None:
-            print("Filo alınamadı:", soap.last_error, flush=True)
-            STOP.wait(30)
-            continue
+            # Filo listesi (plaka eşlemesi) alınamazsa hat sorgularıyla devam et; son iyi listeyi kullan
+            if not fl_warned:
+                print("Filo listesi alınamadı, plakasız devam ediliyor:", soap.last_error, flush=True)
+                fl_warned = True
+            fl = last_fl
+        else:
+            fl_warned, last_fl = False, fl
         due = [k for k in kods if idle.get(k, 0) <= 0]
         for k in kods:
             if k not in due:
