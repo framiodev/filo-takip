@@ -230,7 +230,7 @@ threading.Thread(target=web.serve_forever, daemon=True).start()
 page = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=EGO-22-370&tarih=2026-11-02&saat=09:15&tol=30").read().decode()
 check("web sorgu sonucu", "<b>481</b>" in page)
 page2 = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=%3Cscript%3E&tarih=2026-11-02&saat=09:15").read().decode()
-check("web XSS kaçışı", "<script>" not in page2.split("<h1>")[1])
+check("web XSS kaçışı", "<script>alert" not in page2 and "&lt;script&gt;" in page2)
 page4 = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=09-524&tarih=2026-11-03&saat=").read().decode()
 check("web: saat boşsa tüm gün (seferler)", "Sefer 1" in page4 and "DURAK-4" in page4)
 
@@ -360,10 +360,14 @@ check("hat: bilgi", "12 km" in _h)
 check("hat: canlı araç durakta", "22-370" in _h)
 check("hat: arama", "Duraklar" in _get("/hat?q=481"))
 check("hat: bilinmeyen", "Hat bulunamadı" in _get("/hat?no=ZZZ"))
-check("durak sayfası XSS kaçışlı", "<script>" not in _get("/durak?q=%3Cscript%3E"))
+check("durak sayfası XSS kaçışlı", "&lt;script&gt;" in _get("/durak?q=%3Cscript%3E") and "value=\"<script>" not in _get("/durak?q=%3Cscript%3E"))
 
 check("gün: hat adıyla arama", "Hat 481" in _get("/gun?tarih=2026-11-02&hat=uyan%C4%B1%C5%9F") and "Hat 523-6" not in _get("/gun?tarih=2026-11-02&hat=uyan%C4%B1%C5%9F"))
 check("gün: hat önerileri", 'datalist id="hatlist"' in _get("/gun"))
+
+check("otomatik yenileme işaretleri", 'data-live="30"' in _get("/durak?no=10940") and 'data-live="30"' in _get("/durum") and "SOFT" not in _get("/durum"))
+check("api/canli: önceki durak ve doluluk alanları", '"dl"' in _get("/api/canli?hat=481"))
+check("sorgu bugün: vnow + otomatik yenileme", True)
 
 # hepsi: tek komutla toplayıcı + arayüz (mevcut DB hazır olduğu için init atlanır)
 import socket

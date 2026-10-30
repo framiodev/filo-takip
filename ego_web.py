@@ -9,6 +9,7 @@ import io
 import json
 import os
 import re
+import time
 import urllib.parse
 from http.cookies import SimpleCookie
 from datetime import datetime, timedelta
@@ -120,7 +121,7 @@ a.city:hover{border-color:var(--accent);box-shadow:0 4px 18px rgba(200,16,46,.15
 .dnav a:hover,.csvbtn:hover{background:var(--accent);color:#fff}
 .csvbtn{display:inline-block;margin-left:auto}
 .vmap{isolation:isolate;height:300px;border-radius:14px;border:1px solid var(--line);margin:2px 0 4px}
-.vmapwrap{margin:4px 0 12px}.vlive{width:auto!important;min-height:0!important}
+.vmapwrap{margin:4px 0 12px}.vnow:empty{display:none}.vlive{width:auto!important;min-height:0!important}
 .bar2{height:8px;border-radius:99px;background:var(--chip);overflow:hidden;min-width:70px}
 .bar2 i{display:block;height:100%;background:var(--accent);border-radius:99px}
 .fgrid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end}
@@ -260,6 +261,8 @@ def make_handler(E):
             return f'<span class="pill ok" title="{c["vehicles"]} araç, {c["fails"]} hata">● Toplayıcı çalışıyor · son tur {fmt(c["ts"])}</span>'
         return f'<span class="pill bad">● Toplayıcı durmuş olabilir · son tur {fmt(c["ts"], True)}</span>'
 
+    SOFT_REFRESH = "<script>(function(){var P=document.querySelector('[data-live]');if(!P)return;var iv=(parseInt(P.getAttribute('data-live'),10)||30)*1000;\nfunction busy(){var a=document.activeElement;if(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))return true;var f=document.querySelectorAll('main input,main select');for(var i=0;i<f.length;i++){if(f[i].type!=='hidden'&&f[i].value!==f[i].defaultValue)return true;}return false;}\nfunction tick(){if(document.hidden||busy())return;\nfetch(location.href,{credentials:'same-origin'}).then(function(r){return r.ok?r.text():null}).then(function(t){if(!t)return;\nvar d=new DOMParser().parseFromString(t,'text/html'),nm=d.querySelector('main'),m=document.querySelector('main');if(!nm||!m||busy())return;\nvar open=[].map.call(m.querySelectorAll('details'),function(x){return x.open;});\nvar om=m.querySelectorAll('.vmapwrap'),nn=nm.querySelectorAll('.vmapwrap');\nnn.forEach(function(n,i){if(om[i])n.parentNode.replaceChild(om[i],n);});\nnm.querySelectorAll('details').forEach(function(x,i){if(open[i]!==undefined)x.open=open[i];});\nvar y=window.scrollY;m.replaceWith(document.adoptNode(nm));window.scrollTo(0,y);\nvar op=document.querySelector('header .pill'),np=d.querySelector('header .pill');if(op&&np)op.replaceWith(document.adoptNode(np));\n}).catch(function(){});}\nsetInterval(tick,iv);document.addEventListener('visibilitychange',function(){if(!document.hidden)tick();});})();</script>"
+
     def layout(active, body, title="EGO Filo Takip", picker=False):
         if picker:
             nav, chip, status = "", "", ""
@@ -279,7 +282,7 @@ def make_handler(E):
             '<header><div class="bar"><a class="brand" href="/"><span class="logo">🚌</span>Filo Takip</a>'
             f"{chip}<nav>{nav}</nav>{status}</div></header><main>{body}</main>"
             "<footer>Resmi olmayan, ticari amaç gütmeyen kişisel arşiv. Veri: EGO canlı servisleri. "
-            "Durak saatleri gözlemler arası ara değerle tahmin edilir.</footer></body></html>"
+            "Durak saatleri gözlemler arası ara değerle tahmin edilir.</footer>" + SOFT_REFRESH + "</body></html>"
         )
 
     # ------------------------------------------------------------------ Araç sorgula
@@ -368,17 +371,26 @@ document.querySelectorAll('.vmap').forEach(function(el){
  mk.bindTooltip(esc(label),{permanent:true,direction:'top',offset:[0,-8]});
  all.push([last[0],last[1]]);
  map.fitBounds(all,{padding:[34,34],maxZoom:16});
- var btn=el.parentNode.querySelector('.vlive');
- if(btn&&g.bugun){btn.style.display='';btn.onclick=function(){
-  var st=el.parentNode.querySelector('.vlives');btn.disabled=true;st.textContent=' alınıyor…';
-  fetch('/api/canli?hat='+encodeURIComponent(lastHat)).then(function(r){return r.json()}).then(function(j){
+ var btn=el.parentNode.querySelector('.vlive'),now=el.parentNode.querySelector('.vnow'),st=el.parentNode.querySelector('.vlives');
+ var DL={'az':'🟢 Az yoğun','orta':'🟡 Orta yoğun','çok':'🔴 Çok yoğun','dolu':'🔴 Dolu'};
+ function dolTxt(d){for(var k in DL){if(d&&d.indexOf(k)===0)return DL[k];}return '';}
+ function poll(manual){
+  if(manual){btn.disabled=true;st.textContent=' alınıyor…';}
+  return fetch('/api/canli?hat='+encodeURIComponent(lastHat)).then(function(r){return r.json()}).then(function(j){
    var n=(j.araclar||[]).filter(function(x){return (g.f&&x.f===g.f)||x.p.replace(/ /g,'')===g.p.replace(/ /g,'');})[0];
-   btn.disabled=false;
-   if(!n){st.textContent=j.hata?' '+j.hata:' araç şu an bu hatta listede yok';return;}
+   if(manual)btn.disabled=false;
+   if(!n){now.innerHTML='<span class="muted">Araç şu an EGO canlı listesinde yok (hat '+esc(lastHat)+').</span>';if(manual)st.textContent='';return;}
+   lastHat=n.h||lastHat;
+   var wasNear=map.getBounds().contains(mk.getLatLng());
    mk.setLatLng([n.la,n.lo]);mk.setTooltipContent('Anlık konum '+esc(n.t.slice(-5))+' ('+n.age+' dk önce)');
-   map.panTo([n.la,n.lo]);st.textContent=' güncellendi';
-  }).catch(function(){btn.disabled=false;st.textContent=' alınamadı';});
- };}
+   if(manual||wasNear)map.panTo([n.la,n.lo]);
+   var where=n.d?(n.a?'<b>'+esc(n.a)+'</b> → <b>'+esc(n.d)+'</b> arasında':'<b>'+esc(n.d)+'</b> durağına gidiyor'):'konum alındı';
+   now.innerHTML='<div class="card" style="margin:0 0 8px"><b>Şimdi · Hat '+esc(n.h)+'</b> · '+where+' · '+esc(n.v||'0')+' km/sa'+(dolTxt(n.dl)?' · '+dolTxt(n.dl):'')+' <span class="muted">· '+esc(n.t.slice(-5))+' ('+n.age+' dk önce)</span></div>';
+   if(manual)st.textContent=' güncellendi';
+  }).catch(function(){if(manual){btn.disabled=false;st.textContent=' alınamadı';}});
+ }
+ if(btn&&g.bugun){btn.style.display='';btn.onclick=function(){poll(true);};
+  poll(false);setInterval(function(){if(!document.hidden&&document.body.contains(el))poll(false);},20000);}
 });
 })();
 """
@@ -411,7 +423,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
             return ""
         geo = {"p": E.pretty_plate(v["plaka"]), "f": v.get("arac_no") or "", "trips": trips, "son": son, "bugun": bool(bugun)}
         big = urllib.parse.quote(v.get("arac_no") or E.pretty_plate(v["plaka"]))
-        return (f'<div class="vmapwrap"><div class="vmap" data-geo="{esc(json.dumps(geo, ensure_ascii=False), True)}"></div>'
+        return (f'<div class="vmapwrap">' + ('<div class="vnow"></div>' if bugun else "") + f'<div class="vmap" data-geo="{esc(json.dumps(geo, ensure_ascii=False), True)}"></div>'
                 f'<div class="dnav" style="margin:8px 0 0"><a href="/harita?q={big}">Büyük haritada aç</a>'
                 + ('<button type="button" class="btn vlive" style="display:none;padding:6px 13px;font-size:.88rem">Anlık konumu al</button>'
                    '<span class="muted vlives"></span>' if bugun else "") + "</div></div>")
@@ -521,6 +533,8 @@ document.querySelectorAll('.vmap').forEach(function(el){
         else:
             body += '<div class="card empty">Bir filo kodu (ör. <b>09-524</b>) ya da plaka yazın, tarihi seçin.<br>' \
                     'Saat boş bırakılırsa o günün tüm seferleri ve durak saatleri gelir.</div>'
+        if q and not saat and E.parse_day(tarih) == today():
+            body += '<i data-live="60" hidden></i>'
         if 'class="vmap"' in body:
             body += map_assets()
         return layout("/", body)
@@ -800,7 +814,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
                      f'<table><tbody>{li}</tbody></table></div>')
         else:
             body += note("“Son geçenler” kendi tarama kayıtlarımızdan çıkarılır; son 1 saatte bu durağı geçtiği yakalanan araç yok.", "info")
-        return layout("/durak", body, "Durak %s · Filo Takip" % no)
+        return layout("/durak", body + '<i data-live="30" hidden></i>', "Durak %s · Filo Takip" % no)
 
     def page_hat(g):
         hat = g("no")
@@ -883,7 +897,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
                 li += (f'<li{" class=hasbus" if vs else ""}><a href="/durak?no={esc(durak, True)}"><b>{sira}.</b> {esc(dad)}</a>'
                        f'<span class="muted"> · {esc(durak)}</span>{vs}</li>')
             body += f'<div class="card"><div class="vhead"><b>Duraklar ({len(route)})</b><span class="muted">🚌 = aracın bir sonraki durağı</span></div><ol class="stops">{li}</ol></div>'
-        return layout("/hat", body, "Hat %s · Filo Takip" % hat)
+        return layout("/hat", body + '<i data-live="30" hidden></i>', "Hat %s · Filo Takip" % hat)
 
     def api_durak(g):
         d = stop_data(g("no"))
@@ -1045,7 +1059,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
                 for a, plaka, arac, b in items)
             body += (f'<div class="card"><b>Hat {esc(h)}</b> <span class="muted">{esc(names.get(h, ""))} · {len(items)} araç</span>'
                      f'<div class="hatrow">{links}</div></div>')
-        return layout("/gun", body, "Gün özeti · EGO Filo Takip")
+        return layout("/gun", body + ('<i data-live="120" hidden></i>' if day == today() else ""), "Gün özeti · EGO Filo Takip")
 
     # ------------------------------------------------------------------ Raporlar
     def page_raporlar(g, msg=""):
@@ -1102,7 +1116,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         body = ("<h1>Durum</h1>" + f'<div class="card"><div class="kv">{grid}</div></div>'
                 '<div class="dnav"><a href="/raporlar">Günlük raporlar</a><a href="/sehir">Şehir değiştir</a></div>'
                 f'<p class="muted">Veritabanı: {esc(E.DB_PATH)}</p>')
-        return layout("/durum", body, "Durum · EGO Filo Takip")
+        return layout("/durum", body + '<i data-live="30" hidden></i>', "Durum · EGO Filo Takip")
 
 
     # ------------------------------------------------------------------ Harita
@@ -1130,7 +1144,20 @@ document.querySelectorAll('.vmap').forEach(function(el){
                         "tp": _tip_of(tips, arac, plaka)})
         return json.dumps({"n": len(out), "araclar": out}, ensure_ascii=False)
 
+    CANLI_CACHE = {}
+
     def api_canli(g):
+        hat = g("hat")
+        hit = CANLI_CACHE.get(hat)
+        if hit and time.time() - hit[0] < 12:  # çok izleyici olsa da EGO'ya hat başına ~12 sn'de bir istek
+            return hit[1]
+        out = api_canli_raw(g)
+        CANLI_CACHE[hat] = (time.time(), out)
+        if len(CANLI_CACHE) > 300:
+            CANLI_CACHE.clear()
+        return out
+
+    def api_canli_raw(g):
         hat = g("hat")
         conn = E.connect()
         try:
@@ -1164,6 +1191,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
                 sira = None
             out.append({"p": E.sv(r, "plaka_no"), "f": E.sv(r, "arac_no"), "h": hat, "la": la, "lo": lo,
                         "v": E.sv(r, "hiz"), "d": route.get(sira, "") if sira is not None else "",
+                        "a": route.get(sira - 1, "") if sira is not None else "", "s": sira, "dl": E.parse_dol(r) or "",
                         "t": fmt(kts, True), "age": max(0, int((now - kts) / 60)), "m": model_for(E.sv(r, "arac_no"), E.sv(r, "plaka_no"))[0]})
         return json.dumps({"araclar": out}, ensure_ascii=False)
 
