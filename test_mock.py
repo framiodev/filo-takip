@@ -16,7 +16,7 @@ LINES = {"481": "UYANIŞ-BALGAT", "523-6": "ÇAYYOLU-KIZILAY"}
 STOP_LINES = {"10940": ["481", "523-6"], "10017": ["481"], "10019": []}
 BUSES = {
     "481": [{"arac_no": "22-370", "plaka_no": "06 DHC 251", "hiz": "31", "lat": "39.91", "lng": "32.85", "konum_tarihi": "",
-             "durak_no": "10940", "onceki_durak_no": "10017", "durak_sira_no": "5", "doluluk": {"message": "no data"}}],
+             "durak_no": "10940", "onceki_durak_no": "10017", "durak_sira_no": "5", "doluluk": {"densityLevel": "az yoğun"}, "saniye": "420", "secili_durak_sira_no": "8", "detay": "Körüklü"}],
     "523-6": [{"arac_no": "21-045", "plaka_no": "06 ABC 123", "hiz": "0", "lat": "39.88", "lng": "32.80", "konum_tarihi": ""}],
 }
 STATE = {"swap": False}
@@ -41,9 +41,11 @@ class Mock(BaseHTTPRequestHandler):
             hat = parse_qs(posted).get("hat_no1", [""])[0]
             stops = [s for s, hats in STOP_LINES.items() if hat in hats]
             rows = "".join(f"<tr><td>{i+1}</td><td>{s}</td><td>DURAK {s}</td><td>ADRES</td></tr>" for i, s in enumerate(stops))
-            page = ("<table><tr><td>Hat Adı</td><td>:</td><td>X</td></tr></table>"
-                    "<table><tr><td>06:00</td><td>07:00</td><td>08:00</td></tr></table>"
-                    f"<table>{rows}</table>")
+            page = ('<table class="hs-kv"><tr><td>Hat No</td><td>:</td><td>%s</td></tr><tr><td>Kalkış</td><td>:</td><td>UYANIŞ</td></tr>'
+                    '<tr><td>Varış</td><td>:</td><td>BALGAT</td></tr><tr><td>Mesafe</td><td>:</td><td>12 km</td></tr></table>'
+                    '<table class="hs-table"><tr><td>Hafta içi</td><td class="hs-times">06:00<br>07:30 Okul<br>09:15</td><td class="hs-times">06:40<br>08:10</td></tr>'
+                    '<tr><td>Pazar</td><td class="hs-times">08:00</td></tr></table>'
+                    '<table>%s</table>') % (hat, rows)
             b = page.encode()
         else:  # eski AjaxData adresleri canlı sitede 404 veriyor
             self.send_response(404)
@@ -95,6 +97,7 @@ threading.Thread(target=srv.serve_forever, daemon=True).start()
 
 os.environ["EGO_API_BASE"] = f"http://127.0.0.1:{port}/mblSrv14/service.asp"
 os.environ["EGO_WEB_BASE"] = f"http://127.0.0.1:{port}"
+os.environ["EGO_NO_TIMETABLES"] = "1"
 os.environ["EGO_DB"] = os.path.join(tmp, "t.db")
 os.environ["EGO_REPORT_DIR"] = os.path.join(tmp, "raporlar")
 stops = os.path.join(tmp, "stops.txt")
@@ -324,6 +327,40 @@ try:
 except urllib.error.HTTPError as _e:
     check("farklı kaynaktan POST reddedilir", _e.code == 403)
 check("durum satırı (toplayıcı çalışıyor)", "Toplayıcı çalışıyor" in page)
+
+
+# durak takibi, hat sayfası, doluluk, hareket saatleri
+_c = E.connect()
+check("doluluk sightings'e yazıldı", _c.execute("SELECT COUNT(*) FROM sightings WHERE dol='az yoğun'").fetchone()[0] >= 1)
+check("parse_dol: no data -> None", E.parse_dol({"doluluk": {"message": "no data"}}) is None)
+check("parse_dol: metin", E.parse_dol({"doluluk": '{"densityLevel":"Çok Yoğun"}'}) == "çok yoğun")
+_n = E.refresh_timetables(E.Http(False), delay=0)
+check("saatler tazelendi (2 hat)", _n == 2)
+_c = E.connect()
+_ki = _c.execute("SELECT kalkis, varis, mesafe FROM line_info WHERE hat='481'").fetchone()
+check("hat bilgisi ayrıştı", _ki == ("UYANIŞ", "BALGAT", "12 km"))
+check("hareket saatleri ayrıştı", _c.execute("SELECT COUNT(*) FROM line_times WHERE hat='481'").fetchone()[0] == 6)
+check("saat notu", _c.execute("SELECT nt FROM line_times WHERE hat='481' AND saat='07:30'").fetchone()[0] == "Okul")
+_c.close()
+def _get(path):
+    return urllib.request.urlopen(f"http://127.0.0.1:{wp}{path}").read().decode()
+_d = _get("/durak?no=10940")
+check("durak: yaklaşan araç + varış dk", "22-370" in _d and "7 dk" in _d)
+check("durak: kaç durak kaldı", "3 durak kaldı" in _d)
+check("durak: doluluk", "Az yoğun" in _d)
+check("durak: hat bağlantıları", "/hat?no=481" in _d and "/hat?no=523-6" in _d)
+check("durak: numarayla arama", "Yaklaşan araçlar" in _get("/durak?q=10940"))
+check("durak: adla arama listesi", "20001" in _get("/durak?q=DURAK-1"))
+_j2 = _j.loads(_get("/api/durak?no=10940"))
+check("api/durak", _j2["ok"] and _j2["yak"] and _j2["yak"][0]["dol"] == "az yoğun")
+_h = _get("/hat?no=481")
+check("hat: duraklar", "20001" in _h and "Duraklar (20)" in _h)
+check("hat: hareket saatleri", "07:30" in _h and "Hafta içi" in _h and "Pazar" in _h and "Dönüş" in _h)
+check("hat: bilgi", "12 km" in _h)
+check("hat: canlı araç durakta", "22-370" in _h)
+check("hat: arama", "Duraklar" in _get("/hat?q=481"))
+check("hat: bilinmeyen", "Hat bulunamadı" in _get("/hat?no=ZZZ"))
+check("durak sayfası XSS kaçışlı", "<script>" not in _get("/durak?q=%3Cscript%3E"))
 
 # hepsi: tek komutla toplayıcı + arayüz (mevcut DB hazır olduğu için init atlanır)
 import socket

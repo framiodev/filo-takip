@@ -292,6 +292,9 @@ CREATE TABLE IF NOT EXISTS line_route (
 CREATE TABLE IF NOT EXISTS aliases (alias TEXT PRIMARY KEY, plaka TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS arac_tip (anahtar TEXT PRIMARY KEY, tip TEXT, detay TEXT, ts INTEGER);
+CREATE TABLE IF NOT EXISTS line_info (hat TEXT PRIMARY KEY, kalkis TEXT, varis TEXT, mesafe TEXT, sure TEXT, ts INTEGER);
+CREATE TABLE IF NOT EXISTS line_times (hat TEXT NOT NULL, gun TEXT NOT NULL, yon INTEGER NOT NULL DEFAULT 0, saat TEXT NOT NULL, nt TEXT);
+CREATE INDEX IF NOT EXISTS ix_line_times ON line_times (hat, gun);
 """
 
 
@@ -301,7 +304,7 @@ def connect(path=None):
     conn.executescript(SCHEMA)
     # Eski sürümle oluşturulmuş veritabanlarına yeni sütunları ekle
     have = {r[1] for r in conn.execute("PRAGMA table_info(sightings)")}
-    for col, typ in (("durak", "TEXT"), ("sira", "INTEGER"), ("onceki", "TEXT"), ("kts", "INTEGER")):
+    for col, typ in (("durak", "TEXT"), ("sira", "INTEGER"), ("onceki", "TEXT"), ("kts", "INTEGER"), ("dol", "TEXT")):
         if col not in have:
             conn.execute(f"ALTER TABLE sightings ADD COLUMN {col} {typ}")
     conn.commit()
@@ -342,6 +345,23 @@ def record_tip(conn, ts, row, plaka_key, arac_no):
             _TIP_CACHE[k] = (tip, detay)
 
 
+DOL_AD = {"az yoğun": 1, "orta yoğun": 2, "çok yoğun": 3, "dolu": 3}
+
+
+def parse_dol(row):
+    """EGO 'doluluk' alanından yoğunluk metni (yoksa None). {"message":"no data"} -> None."""
+    d = row.get("doluluk") if isinstance(row, dict) else None
+    if isinstance(d, str):
+        try:
+            d = json.loads(d)
+        except ValueError:
+            d = {"densityLevel": d}
+    if isinstance(d, dict):
+        v = str(d.get("densityLevel") or "").strip().lower().replace("İ", "i").replace("I", "ı")
+        return v[:20] or None
+    return None
+
+
 def record_sighting(conn, ts, row, hat, gap, keep_raw=True):
     """Bir canlı araç satırını kaydeder; aynı araç+hat ardışıksa 'stint'i uzatır."""
     arac_no = sv(row, "arac_no")
@@ -370,9 +390,9 @@ def record_sighting(conn, ts, row, hat, gap, keep_raw=True):
         new = True
     if keep_raw and not (kts and _LAST_KTS.get((key, hat)) == kts):
         conn.execute(
-            "INSERT INTO sightings (ts, plaka, arac_no, hat, lat, lng, hiz, durak, sira, onceki, kts) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (ts, key, arac_no, hat, lat, lng, hiz, durak or None, sira, onceki or None, kts),
+            "INSERT INTO sightings (ts, plaka, arac_no, hat, lat, lng, hiz, durak, sira, onceki, kts, dol) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (ts, key, arac_no, hat, lat, lng, hiz, durak or None, sira, onceki or None, kts, parse_dol(row)),
         )
         if kts:
             _LAST_KTS[(key, hat)] = kts
@@ -461,6 +481,102 @@ def fetch_line_stops(http, hat):
         if len(cells) >= 4 and cells[0].isdigit() and re.fullmatch(r"\d{4,6}", cells[1]):
             stops.append((int(cells[0]), cells[1], cells[2]))
     return stops
+
+
+def _cells(tr):
+    return [html.unescape(re.sub(r"<[^>]+>", " ", c)).strip() for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", tr, re.S | re.I)]
+
+
+def parse_line_page(body):
+    """HareketSaatleri HTML -> {'info': {...}, 'times': [(gun, yon, saat, not)], 'stops': [...]}"""
+    info = {}
+    m = re.search(r'<table[^>]*hs-kv[^>]*>(.*?)</table>', body, re.S | re.I)
+    if m:
+        for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", m.group(1), re.S | re.I):
+            c = [x for x in _cells(tr) if x != ":"]
+            if len(c) >= 2:
+                info[re.sub(r"\s+", " ", c[0]).strip(" :").lower()] = re.sub(r"\s+", " ", c[1]).strip()
+    times = []
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S | re.I):
+        if "hs-times" not in tr:
+            continue
+        first = _cells(tr)[0].lower() if _cells(tr) else ""
+        gun = "pazar" if "pazar" in first else "cumartesi" if "cumartesi" in first else "haftaici"
+        for yon, cell in enumerate(re.findall(r'<td[^>]*hs-times[^>]*>(.*?)</td>', tr, re.S | re.I)):
+            for part in re.split(r"<br\s*/?>", cell, flags=re.I):
+                t = html.unescape(re.sub(r"<[^>]+>", " ", part)).strip()
+                mm = re.match(r"(\d{1,2}):(\d{2})\s*(.*)$", t)
+                if mm:
+                    times.append((gun, yon, "%02d:%s" % (int(mm.group(1)), mm.group(2)), mm.group(3).strip()[:60]))
+    return {"info": info, "times": times, "stops": fetch_stops_from_html(body)}
+
+
+def fetch_stops_from_html(body):
+    stops = []
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S | re.I):
+        cells = _cells(tr)
+        if len(cells) >= 4 and cells[0].isdigit() and re.fullmatch(r"\d{4,6}", cells[1]):
+            stops.append((int(cells[0]), cells[1], cells[2]))
+    return stops
+
+
+def post_line_page(http, hat):
+    return http.request(
+        WEB_BASE + "/HareketSaatleri",
+        headers={"User-Agent": UA_WEB, "Content-Type": "application/x-www-form-urlencoded",
+                 "Referer": WEB_BASE + "/hareketsaatleri"},
+        data=urllib.parse.urlencode({"hat_no1": hat}).encode(),
+    ).decode("utf-8", "replace")
+
+
+def save_line_page(conn, hat, page):
+    i = page["info"]
+    def pick(*keys):
+        for k, v in i.items():
+            if any(x in k for x in keys):
+                return v
+        return ""
+    conn.execute("INSERT OR REPLACE INTO line_info (hat, kalkis, varis, mesafe, sure, ts) VALUES (?,?,?,?,?,?)",
+                 (hat, pick("kalkış", "kalkis"), pick("varış", "varis"), pick("mesafe"), pick("süre", "sure"), now_ts()))
+    conn.execute("DELETE FROM line_times WHERE hat=?", (hat,))
+    conn.executemany("INSERT INTO line_times (hat, gun, yon, saat, nt) VALUES (?,?,?,?,?)",
+                     [(hat, g, y, t, n) for g, y, t, n in page["times"]])
+
+
+def refresh_timetables(http, max_age_days=7, delay=1.5, limit=0):
+    """Hat bilgisi/hareket saatlerini yavaşça tazeler (toplayıcı içinde arka planda çalışır)."""
+    conn = connect()
+    try:
+        old = now_ts() - max_age_days * 86400
+        have = {r[0]: r[1] for r in conn.execute("SELECT hat, ts FROM line_info")}
+        todo = [r[0] for r in conn.execute("SELECT hat FROM lines ORDER BY hat") if have.get(r[0], 0) < old]
+        if limit:
+            todo = todo[:limit]
+        n = 0
+        for hat in todo:
+            if STOP.is_set():
+                break
+            try:
+                save_line_page(conn, hat, parse_line_page(post_line_page(http, hat)))
+                n += 1
+                if n % 25 == 0:
+                    conn.commit()
+            except Exception as e:
+                api_rows.last_error = str(e)
+            STOP.wait(delay)
+        conn.commit()
+        return n
+    finally:
+        conn.close()
+
+
+def timetable_worker(http, delay=1.5):
+    while not STOP.is_set():
+        try:
+            refresh_timetables(http, delay=delay)
+        except Exception:
+            pass
+        STOP.wait(6 * 3600)
 
 
 def init_from_schedules(conn, http, catalog, args):
@@ -650,6 +766,9 @@ def cmd_run(args):
     missing = len(catalog) - len(hats)
     if missing > 0:
         print(f"Not: {missing} hat için durak bilinmiyor, bunlar izlenmeyecek (gece hatları vb. olabilir).")
+
+    if not getattr(args, "once", False) and not max_min and os.environ.get("EGO_NO_TIMETABLES") != "1":
+        threading.Thread(target=timetable_worker, args=(http,), daemon=True).start()
 
     interval = args.interval * 60
     gap = max(1800, int(3 * interval))
@@ -1162,6 +1281,11 @@ def main(argv=None):
                    help="saatler: her hattın Hareket Saatleri sayfasından (hızlı, varsayılan); "
                         "durak: tüm durakları Otobusler servisiyle tarar (yavaş, yedek yöntem)")
     p.set_defaults(fn=cmd_init)
+
+    p = sub.add_parser("saatler", help="hat bilgisi ve hareket saatlerini çek/tazele")
+    p.add_argument("--gun", type=float, default=7, help="bu günden eski kayıtları tazele")
+    p.add_argument("--limit", type=int, default=0)
+    p.set_defaults(fn=lambda a: print("Tazelenen hat:", refresh_timetables(Http(a.insecure), a.gun, 0.8, a.limit)) or 0)
 
     p = sub.add_parser("run", help="sürekli toplayıcı")
     add_run_args(p)

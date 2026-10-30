@@ -18,6 +18,10 @@ Ankara EGO otobüslerinin hangi hatta, hangi saatte ve hangi duraklardan geçti�
 `main` dalına push → sunucu 5 dakikada bir çeker → `test_mock.py` geçerse servisler yeniden başlar (başarısızsa eski sürüm çalışmaya devam eder, `guncelleme.log`).
 
 ## Arayüz özellikleri
+
+- **Durak takibi (/durak)**: durak adı/numarasıyla arama; duraktan geçen hatlar, yaklaşan araçlar (tahmini varış dk, kaç durak kaldı, doluluk, körüklü/solo), hatların sonraki hareketi ve son 1 saatte durağı geçenler. EGO durak koordinatı vermediği için yakınlık "dakika / durak sayısı" olarak gösterilir.
+- **Hat sayfası (/hat)**: duraklar sırayla, hattaki canlı araçlar bulundukları durakta, hafta içi/cumartesi/pazar hareket saatleri ve sıradaki kalkışlar. Saatler toplayıcı içinde arka planda haftada bir tazelenir (`python3 ego_tracker.py saatler` ile elle de çalışır).
+- **Doluluk**: EGO'nun yoğunluk bilgisi (varsa) her kayıtla birlikte saklanır.
 - Açılışta şehir seçimi (çerezle hatırlanır, üstteki şehir düğmesinden değişir). Şehir listesi `ego_web.py` içindeki `CITIES`; `aktif: False` olanlar "Yakında" görünür.
 - Sorgula: filo kodu/plaka + tarih (+saat), gün gezgini, son 14 gün geçmişi
 - Harita: kümeleme, işletme (EGO / ÖHO 06 HO), körüklü/solo, tam hat ve metin filtresi

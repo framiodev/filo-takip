@@ -32,6 +32,9 @@ nav{display:flex;gap:4px;flex:1;flex-wrap:wrap}
 nav a{padding:8px 11px;border-radius:999px;text-decoration:none;color:var(--muted);font-weight:600;font-size:.95rem}
 nav a:hover{background:var(--chip)}
 nav a.on{background:var(--accent);color:#fff}
+.chip.dol{white-space:nowrap}.times{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.times .chip{font-variant-numeric:tabular-nums}
+.stops{list-style:none;margin:8px 0 0;padding:0;border-left:3px solid var(--line)}.stops li{padding:6px 10px;border-bottom:1px solid var(--line);font-size:.92rem}
+.stops li.hasbus{background:var(--okbg)}.stops a{text-decoration:none}
 .pill{padding:5px 11px;border-radius:999px;font-size:.82rem;font-weight:600;white-space:nowrap}
 .pill.ok{background:var(--okbg);color:var(--ok)}.pill.bad{background:var(--badbg);color:var(--bad)}
 main{max-width:1000px;margin:0 auto;padding:18px 16px 60px}
@@ -143,9 +146,9 @@ MANIFEST = {
               {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}],
 }
 
-TABS = [("/", "Sorgula", "🔍"), ("/harita", "Harita", "🗺️"), ("/gun", "Gün özeti", "📅"), ("/hatlar", "İlk hatlar", "📊"), ("/modeller", "Modeller", "🚌"), ("/raporlar", "Raporlar", "📄"), ("/durum", "Durum", "📶")]
+TABS = [("/", "Sorgula", "🔍"), ("/harita", "Harita", "🗺️"), ("/gun", "Gün özeti", "📅"), ("/durak", "Durak", "🚏"), ("/hat", "Hat", "🚍"), ("/hatlar", "İlk hatlar", "📊"), ("/modeller", "Modeller", "🚌"), ("/raporlar", "Raporlar", "📄"), ("/durum", "Durum", "📶")]
 
-DESK_ONLY = {"/raporlar"}  # dar ekranda alt çubuktan gizlenir (Durum sayfasından erişilir)
+DESK_ONLY = {"/raporlar", "/modeller", "/hatlar"}  # dar ekranda alt çubuktan gizlenir (Durum sayfasından erişilir)
 
 # Şehir kayıt defteri: yeni şehir eklemek için buraya satır ekle ve toplayıcı bağdaştırıcısını yaz.
 CITIES = [
@@ -658,6 +661,232 @@ document.querySelectorAll('.vmap').forEach(function(el){
                      f'<th>Çalışma dilimi</th><th></th></tr></thead><tbody>{tr}</tbody></table></div></div>')
         return layout("/hatlar", body, "İlk hatlar · EGO Filo Takip")
 
+    # ------------------------------------------------------------------ Durak ve hat sayfaları
+    DOL_CHIP = {"az": ("🟢", "Az yoğun"), "orta": ("🟡", "Orta yoğun"), "çok": ("🔴", "Çok yoğun"), "dolu": ("🔴", "Dolu")}
+
+    def dol_chip(d):
+        d = (d or "").lower()
+        for k, (ic, t) in DOL_CHIP.items():
+            if d.startswith(k):
+                return f'<span class="chip dol" title="EGO doluluk bilgisi">{ic} {t}</span>'
+        return ""
+
+    def eta_text(r):
+        sn = E.to_int(E.sv(r, "saniye"))
+        if sn is not None and sn >= 0:
+            return "Durakta" if sn < 45 else "%d dk" % max(1, round(sn / 60))
+        return E.sv(r, "sure")
+
+    def stop_name(conn, no):
+        r = conn.execute("SELECT ad FROM line_route WHERE durak=? AND ad<>'' LIMIT 1", (no,)).fetchone()
+        return r[0] if r else ""
+
+    def stop_search(q):
+        conn = E.connect()
+        try:
+            like = "%" + q.replace("%", "").replace("_", "") + "%"
+            return conn.execute(
+                "SELECT durak, MIN(ad), COUNT(DISTINCT hat) FROM line_route WHERE durak=? OR ad LIKE ? "
+                "GROUP BY durak ORDER BY 3 DESC LIMIT 40", (q, like)).fetchall()
+        finally:
+            conn.close()
+
+    def stop_data(no):
+        """Duraktaki durum: yaklaşan araçlar (EGO canlı) + son geçenler (kendi kayıtlarımız)."""
+        conn = E.connect()
+        try:
+            ad = stop_name(conn, no)
+            hats = [r[0] for r in conn.execute("SELECT hat FROM line_stops WHERE durak=?", (no,))]
+            names = {r[0]: r[1] for r in conn.execute("SELECT hat, ad FROM lines")}
+            sira_of = {h: s for h, s in conn.execute("SELECT hat, sira FROM line_route WHERE durak=?", (no,))}
+            now = E.now_ts()
+            sights = conn.execute(
+                "SELECT plaka, arac_no, hat, ts, sira FROM sightings WHERE ts>=? AND hat IN (%s) AND sira IS NOT NULL ORDER BY ts"
+                % ",".join("?" * len(hats)), (now - 3600, *hats)).fetchall() if hats else []
+        finally:
+            conn.close()
+        rows = E.api_rows(E.Http(False), "Otobusler", DURAK=no)
+        yak, nxt = [], {}
+        for r in rows or []:
+            hat = E.sv(r, "hat_kisa_kod") or E.sv(r, "hat_no")
+            if not E.is_live(r):
+                txt = " ".join(str(v) for v in r.values() if isinstance(v, str) and ("Hareket" in v or ":" in v))
+                nxt[hat] = (E.sv(r, "sure") or txt)[:80]
+                continue
+            vs = E.to_int(E.sv(r, "durak_sira_no"))
+            ss = E.to_int(E.sv(r, "secili_durak_sira_no")) or sira_of.get(hat)
+            away = (ss - vs) if (ss is not None and vs is not None) else None
+            yak.append({"hat": hat, "f": E.sv(r, "arac_no"), "p": E.sv(r, "plaka_no"), "eta": eta_text(r),
+                        "sn": E.to_int(E.sv(r, "saniye")), "away": away, "dol": E.parse_dol(r),
+                        "tip": E.parse_tip(E.sv(r, "detay"))})
+        yak.sort(key=lambda x: (x["sn"] if x["sn"] is not None else 99999, x["away"] if x["away"] is not None else 999))
+        # geçenler: son 60 dk'da bu durağın sırasının gerisinden önüne geçenler
+        by = {}
+        for plaka, f, hat, ts, sira in sights:
+            by.setdefault((plaka, hat), []).append((ts, sira, f))
+        gecen = {}
+        for (plaka, hat), lst in by.items():
+            ss = sira_of.get(hat)
+            if ss is None:
+                continue
+            before = [x for x in lst if x[1] <= ss]
+            after = [x for x in lst if x[1] > ss]
+            if before and after and after[0][0] >= before[-1][0]:
+                t = after[0][0]
+                if plaka not in gecen or gecen[plaka]["ts"] < t:
+                    gecen[plaka] = {"hat": hat, "f": lst[-1][2], "p": plaka, "ts": t}
+        gec = sorted(gecen.values(), key=lambda x: -x["ts"])[:12]
+        return {"no": no, "ad": ad, "hatlar": [(h, names.get(h, "")) for h in sorted(hats, key=natural_key)],
+                "yak": yak, "nxt": nxt, "gec": gec, "ok": rows is not None, "now": now}
+
+    def page_durak(g):
+        no = g("no")
+        q = g("q")
+        form = ('<form class="card form" method="get" action="/durak"><div class="field"><label>Durak adı veya numarası</label>'
+                f'<input name="q" value="{esc(q or no, True)}" placeholder="ör. Kızılay veya 10940" autocomplete="off"></div>'
+                '<button class="btn">Ara</button></form>')
+        body = "<h1>Durak takibi</h1>" + form
+        if q and not no:
+            res = stop_search(q)
+            if len(res) == 1:
+                no = res[0][0]
+            elif not res:
+                return layout("/durak", body + '<div class="card empty">Eşleşen durak yok.</div>', "Durak · Filo Takip")
+            else:
+                li = "".join(f'<tr><td><a href="/durak?no={esc(d, True)}"><b>{esc(d)}</b></a></td><td>{esc(a)}</td><td>{n} hat</td></tr>'
+                             for d, a, n in res)
+                return layout("/durak", body + f'<div class="card"><table><tbody>{li}</tbody></table></div>', "Durak · Filo Takip")
+        if not no:
+            body += note("Durağı adıyla ya da numarasıyla arayın. EGO durak koordinatı yayınlamadığı için “ne kadar yakın” bilgisi, "
+                         "aracın tahmini varış süresi ve kaç durak kaldığı olarak gösterilir.", "info")
+            return layout("/durak", body, "Durak · Filo Takip")
+        d = stop_data(no)
+        head = f'<div class="card"><div class="vhead"><b>{esc(d["ad"] or "Durak")} · {esc(no)}</b></div>'
+        if d["hatlar"]:
+            head += '<div class="muted" style="margin-top:6px">' + " ".join(
+                f'<a class="chip" href="/hat?no={urllib.parse.quote(h)}" title="{esc(n, True)}">{esc(h)}</a>' for h, n in d["hatlar"]) + "</div>"
+        body += head + "</div>"
+        if not d["ok"]:
+            body += note("EGO canlı servisi şu an cevap vermedi; yaklaşan araçlar gösterilemiyor.")
+        elif not d["yak"]:
+            body += '<div class="card empty">Şu an bu durağa yaklaşan canlı araç görünmüyor.</div>'
+        else:
+            tr = ""
+            for y in d["yak"]:
+                if y["away"] is None:
+                    yak = ""
+                elif y["away"] > 0:
+                    yak = f'{y["away"]} durak kaldı'
+                elif y["away"] == 0:
+                    yak = "durağa geliyor"
+                else:
+                    yak = f'{-y["away"]} durak önce geçti'
+                tr += (f'<tr><td><a href="/hat?no={urllib.parse.quote(y["hat"])}"><b>{esc(y["hat"])}</b></a></td>'
+                       f'<td><a href="/?q={urllib.parse.quote(y["f"] or y["p"])}">{esc(y["f"])}</a><div class="muted" style="font-size:.78rem">{esc(y["p"])}</div></td>'
+                       f'<td><b>{esc(y["eta"])}</b><div class="muted" style="font-size:.78rem">{esc(yak)}</div></td>'
+                       f'<td>{dol_chip(y["dol"])} {model_chip(y["f"], y["p"])}</td></tr>')
+            body += ('<div class="card"><div class="vhead"><b>Yaklaşan araçlar</b><span class="muted">canlı · EGO</span></div>'
+                     '<div class="scroll" style="max-height:none"><table><thead><tr><th>Hat</th><th>Araç</th><th>Varış</th><th>Bilgi</th></tr></thead>'
+                     f'<tbody>{tr}</tbody></table></div></div>')
+        if d["nxt"]:
+            li = "".join(f'<tr><td><b>{esc(h)}</b></td><td>{esc(t)}</td></tr>' for h, t in sorted(d["nxt"].items(), key=lambda x: natural_key(x[0])))
+            body += f'<div class="card"><div class="vhead"><b>Hatların sonraki hareketi</b></div><table><tbody>{li}</tbody></table></div>'
+        if d["gec"]:
+            li = "".join(f'<tr><td><b>{esc(x["hat"])}</b></td><td><a href="/?q={urllib.parse.quote(x["f"] or x["p"])}">{esc(x["f"] or x["p"])}</a></td>'
+                         f'<td>{fmt(x["ts"])} ({max(0, (d["now"] - x["ts"]) // 60)} dk önce)</td></tr>' for x in d["gec"])
+            body += ('<div class="card"><div class="vhead"><b>Son geçenler</b><span class="muted">kendi kayıtlarımızdan, son 1 saat</span></div>'
+                     f'<table><tbody>{li}</tbody></table></div>')
+        else:
+            body += note("“Son geçenler” kendi tarama kayıtlarımızdan çıkarılır; son 1 saatte bu durağı geçtiği yakalanan araç yok.", "info")
+        return layout("/durak", body, "Durak %s · Filo Takip" % no)
+
+    def page_hat(g):
+        hat = g("no")
+        q = g("q")
+        form = ('<form class="card form" method="get" action="/hat"><div class="field"><label>Hat numarası veya güzergâh</label>'
+                f'<input name="q" value="{esc(q or hat, True)}" placeholder="ör. 481 veya 523-6" autocomplete="off"></div>'
+                '<button class="btn">Göster</button></form>')
+        body = "<h1>Hat bilgisi</h1>" + form
+        if q and not hat:
+            conn = E.connect()
+            try:
+                like = "%" + q.replace("%", "").replace("_", "") + "%"
+                res = conn.execute("SELECT hat, ad FROM lines WHERE hat=? OR hat LIKE ? OR ad LIKE ? ORDER BY hat LIMIT 40", (q, like, like)).fetchall()
+            finally:
+                conn.close()
+            exact = [r for r in res if r[0].lower() == q.lower()]
+            if exact:
+                hat = exact[0][0]
+            elif len(res) == 1:
+                hat = res[0][0]
+            elif not res:
+                return layout("/hat", body + '<div class="card empty">Eşleşen hat yok.</div>', "Hat · Filo Takip")
+            else:
+                res.sort(key=lambda r: natural_key(r[0]))
+                li = "".join(f'<tr><td><a href="/hat?no={urllib.parse.quote(h)}"><b>{esc(h)}</b></a></td><td>{esc(a)}</td></tr>' for h, a in res)
+                return layout("/hat", body + f'<div class="card"><table><tbody>{li}</tbody></table></div>', "Hat · Filo Takip")
+        if not hat:
+            return layout("/hat", body + note("Hat numarasıyla ya da güzergâh adıyla arayın: duraklar, hareket saatleri ve şu an hattaki araçlar.", "info"), "Hat · Filo Takip")
+        conn = E.connect()
+        try:
+            ad = (conn.execute("SELECT ad FROM lines WHERE hat=?", (hat,)).fetchone() or [""])[0]
+            route = conn.execute("SELECT sira, durak, ad FROM line_route WHERE hat=? ORDER BY sira", (hat,)).fetchall()
+            info = conn.execute("SELECT kalkis, varis, mesafe, sure FROM line_info WHERE hat=?", (hat,)).fetchone()
+            times = conn.execute("SELECT gun, yon, saat, nt FROM line_times WHERE hat=? ORDER BY gun, yon, saat", (hat,)).fetchall()
+        finally:
+            conn.close()
+        if not ad and not route:
+            return layout("/hat", body + '<div class="card empty">Hat bulunamadı.</div>', "Hat · Filo Takip")
+        live = {}
+        rows = E.api_rows(E.Http(False), "Otobus", HAT=hat, DURAK=route[0][1]) if route else None
+        for r in rows or []:
+            if E.is_live(r):
+                live.setdefault(E.to_int(E.sv(r, "durak_sira_no")), []).append(r)
+        head = f'<div class="card"><div class="vhead"><b>{esc(hat)} · {esc(ad)}</b><a class="csvbtn" href="/harita?hat={urllib.parse.quote(hat)}">Haritada gör</a></div>'
+        if info and any(info):
+            lab = ("Kalkış: ", "Varış: ", "Mesafe: ", "Süre: ")
+            head += '<div class="muted" style="margin-top:6px">' + " · ".join(esc(l + v) for l, v in zip(lab, info) if v) + "</div>"
+        body += head + "</div>"
+        if rows is None and route:
+            body += note("EGO canlı servisi şu an cevap vermedi; hattaki araçlar gösterilemiyor.")
+        elif route:
+            body += f'<div class="muted" style="margin:0 2px 8px">Şu an hatta {sum(len(v) for v in live.values())} canlı araç var.</div>'
+        if times:
+            wd = datetime.now(E.TZ).weekday()
+            bugun = "pazar" if wd == 6 else "cumartesi" if wd == 5 else "haftaici"
+            nowhm = datetime.now(E.TZ).strftime("%H:%M")
+            for key, lab in (("haftaici", "Hafta içi"), ("cumartesi", "Cumartesi"), ("pazar", "Pazar")):
+                ts_ = [t for t in times if t[0] == key]
+                if not ts_:
+                    continue
+                inner = ""
+                for y in sorted({t[1] for t in ts_}):
+                    sa = [t for t in ts_ if t[1] == y]
+                    chips = " ".join(
+                        f'<span class="chip"{(" title=" + chr(34) + esc(t[3], True) + chr(34)) if t[3] else ""}>{esc(t[2])}{"*" if t[3] else ""}</span>' for t in sa)
+                    inner += f'<div style="margin:6px 0"><span class="muted">{"Gidiş" if y == 0 else "Dönüş"} · {len(sa)} sefer</span><div class="times">{chips}</div></div>'
+                nx = ""
+                if key == bugun:
+                    nxt = [t[2] for t in ts_ if t[1] == 0 and t[2] >= nowhm][:3]
+                    nx = '<div style="margin:6px 0"><b>Sıradaki kalkışlar:</b> ' + (", ".join(nxt) if nxt else "bugün için kalmadı") + "</div>"
+                body += f'<div class="card"><div class="vhead"><b>{lab}</b>{"<span class=pill>bugün</span>" if key == bugun else ""}</div>{nx}{inner}</div>'
+            body += '<div class="muted" style="font-size:.8rem;margin-bottom:12px">* işaretli seferlerin notu üzerine gelince görünür. Saatler EGO “Hareket Saatleri” sayfasındandır.</div>'
+        else:
+            body += note("Bu hattın hareket saatleri henüz çekilmedi; toplayıcı arka planda tüm hatları yavaş yavaş tarıyor.", "info")
+        if route:
+            li = ""
+            for sira, durak, dad in route:
+                vs = "".join(f' <a class="chip" href="/?q={urllib.parse.quote(E.sv(r, "arac_no") or E.sv(r, "plaka_no"))}">🚌 {esc(E.sv(r, "arac_no"))}</a> '
+                             + dol_chip(E.parse_dol(r)) for r in live.get(sira, []))
+                li += (f'<li{" class=hasbus" if vs else ""}><a href="/durak?no={esc(durak, True)}"><b>{sira}.</b> {esc(dad)}</a>'
+                       f'<span class="muted"> · {esc(durak)}</span>{vs}</li>')
+            body += f'<div class="card"><div class="vhead"><b>Duraklar ({len(route)})</b><span class="muted">🚌 = aracın bir sonraki durağı</span></div><ol class="stops">{li}</ol></div>'
+        return layout("/hat", body, "Hat %s · Filo Takip" % hat)
+
+    def api_durak(g):
+        d = stop_data(g("no"))
+        return json.dumps({k: d[k] for k in ("no", "ad", "yak", "nxt", "gec", "ok")}, ensure_ascii=False)
+
     # ------------------------------------------------------------------ CSV dışa aktarma
     def csv_gun(g):
         day = E.parse_day(g("tarih"))
@@ -978,7 +1207,7 @@ function load(){
 ['q','hat'].forEach(function(i){$(i).addEventListener('input',draw);});
 ['op','tip','live'].forEach(function(i){$(i).addEventListener('change',draw);});
 $('saat').addEventListener('change',load);
-var u=new URLSearchParams(location.search);if(u.get('q'))$('q').value=u.get('q');
+var u=new URLSearchParams(location.search);if(u.get('q'))$('q').value=u.get('q');if(u.get('hat'))$('hat').value=u.get('hat');
 load();setInterval(load,60000);
 })();
 """
@@ -1143,6 +1372,12 @@ load();setInterval(load,60000);
                     return self._redirect("/sehir?yakinda=" + urllib.parse.quote(sec))
                 if u.path == "/hatlar":
                     return self._send(page_hatlar(g))
+                if u.path == "/durak":
+                    return self._send(page_durak(g))
+                if u.path == "/hat":
+                    return self._send(page_hat(g))
+                if u.path == "/api/durak":
+                    return self._send(api_durak(g), "application/json; charset=utf-8")
                 if u.path in ("/csv/gun", "/csv/hatlar", "/csv/arac"):
                     fn = {"/csv/gun": csv_gun, "/csv/hatlar": csv_hatlar, "/csv/arac": csv_arac}[u.path]
                     name, data = fn(g)
