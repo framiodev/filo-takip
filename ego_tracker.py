@@ -546,6 +546,7 @@ def save_line_page(conn, hat, page):
 def refresh_timetables(http, max_age_days=7, delay=1.5, limit=0):
     """Hat bilgisi/hareket saatlerini yavaşça tazeler (toplayıcı içinde arka planda çalışır)."""
     conn = connect()
+    conn.execute("PRAGMA busy_timeout=60000")
     try:
         old = now_ts() - max_age_days * 86400
         have = {r[0]: r[1] for r in conn.execute("SELECT hat, ts FROM line_info")}
@@ -557,10 +558,10 @@ def refresh_timetables(http, max_age_days=7, delay=1.5, limit=0):
             if STOP.is_set():
                 break
             try:
-                save_line_page(conn, hat, parse_line_page(post_line_page(http, hat)))
+                page = parse_line_page(post_line_page(http, hat))  # ağ isteği kilit tutmadan yapılır
+                save_line_page(conn, hat, page)
+                conn.commit()  # yazma kilidini hemen bırak; toplayıcı beklemesin
                 n += 1
-                if n % 25 == 0:
-                    conn.commit()
             except Exception as e:
                 api_rows.last_error = str(e)
             STOP.wait(delay)
