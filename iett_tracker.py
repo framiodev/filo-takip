@@ -317,7 +317,7 @@ def cmd_run(args):
                 if n % 25 == 0:
                     conn.commit()
                     print(f"  ... {n}/{len(due)} hat, {veh} araç, {fails} hata, {int(time.time() - t0)} sn", flush=True)
-        if due and veh == 0 and fails >= 5:
+        if due and veh == 0 and fails >= 1:
             backoff = min(backoff * 2 if backoff else 1800, 7200)
             print(f"Hat sorguları başarısız ({fails}): {soap.last_error} - hız sınırı olabilir, {backoff // 60} dk bekleniyor", flush=True)
             STOP.wait(backoff)
@@ -356,7 +356,7 @@ def main(argv=None):
     p.set_defaults(fn=cmd_saatler)
     p = sub.add_parser("run")
     p.add_argument("--interval", type=float, default=3, help="tur aralığı (dk)")
-    p.add_argument("--delay", type=float, default=1.0, help="her sorgudan sonra bekleme (sn); İBB hız sınırı için düşük tutmayın")
+    p.add_argument("--delay", type=float, default=2.0, help="her sorgudan sonra bekleme (sn); İBB hız sınırı için düşük tutmayın")
     p.add_argument("--idle-max", type=int, default=3)
     p.add_argument("--workers", type=int, default=1, help="paralel sorgu sayısı")
     p.add_argument("--no-raw", action="store_true")
