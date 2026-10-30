@@ -24,7 +24,7 @@ CSS = """
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 a{color:var(--accent)}
-header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line)}
+header{position:sticky;top:0;z-index:2000;background:var(--card);border-bottom:1px solid var(--line)}
 .bar{max-width:1000px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.1rem;color:var(--ink);text-decoration:none}
 .logo{width:30px;height:30px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:.9rem}
@@ -119,7 +119,7 @@ a.city:hover{border-color:var(--accent);box-shadow:0 4px 18px rgba(200,16,46,.15
 .dnav a,.csvbtn{background:var(--chip);color:var(--ink);text-decoration:none;border-radius:999px;padding:6px 13px;font-size:.88rem;font-weight:600}
 .dnav a:hover,.csvbtn:hover{background:var(--accent);color:#fff}
 .csvbtn{display:inline-block;margin-left:auto}
-.vmap{height:300px;border-radius:14px;border:1px solid var(--line);margin:2px 0 4px}
+.vmap{isolation:isolate;height:300px;border-radius:14px;border:1px solid var(--line);margin:2px 0 4px}
 .vmapwrap{margin:4px 0 12px}.vlive{width:auto!important;min-height:0!important}
 .bar2{height:8px;border-radius:99px;background:var(--chip);overflow:hidden;min-width:70px}
 .bar2 i{display:block;height:100%;background:var(--accent);border-radius:99px}
@@ -1236,7 +1236,7 @@ load();setInterval(load,60000);
             '<div class="field"><label>Son kaç saat</label><input id="saat" type="number" value="24" min="1" max="168"></div>'
             '<div class="field"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input id="live" type="checkbox" style="width:auto"> yalnız canlı</label></div></div>'
             '<div class="muted" id="cnt" style="margin:6px 2px 10px">Yükleniyor…</div>'
-            '<div id="map" style="height:68vh;min-height:360px;border-radius:16px;border:1px solid var(--line)"></div>'
+            '<div id="map" style="height:68vh;isolation:isolate;min-height:360px;border-radius:16px;border:1px solid var(--line)"></div>'
             '<p class="muted">Yeşil: son 15 dakikada görüldü. Gri: çalışmıyor veya veri yok, son bilinen konum. Kalabalık bölgelerde araçlar '
             'sayıyla gruplanır; yaklaştıkça tek tek görünür. Veri taramalar arasında güncellenir (yaklaşık 1-5 dk).</p>'
             '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">'
