@@ -2,7 +2,7 @@
 # EGO Filo Takip - VPS kurulumu (Ubuntu 22.04/24.04, Debian 12). root olarak çalıştır.
 #
 #   bash kur.sh ALAN_ADI YONETICI_SIFRESI GITHUB_SSH_ADRESI
-#   ör: bash kur.sh filo.ulasimarsiv.com Sifrem123 git@github.com:framiodev/ego-filo-takip.git
+#   ör: bash kur.sh filo.ulasimarsiv.com Sifrem123 git@github.com:framiodev/filo-takip.git
 #
 # ALAN_ADI   : DNS A kaydı bu sunucunun IP'sine bakmalı (boşsa yalnız http://IP açılır; "" yaz)
 # YONETICI_SIFRESI : /modeller sayfası için (kullanıcı: ali); boşsa korumasız

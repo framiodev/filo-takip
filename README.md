@@ -1,4 +1,4 @@
-# EGO Filo Takip
+# Filo Takip (şehir içi otobüs arşivi)
 
 Ankara EGO otobüslerinin hangi hatta, hangi saatte ve hangi duraklardan geçtiğini kaydeden, filo kodu/plaka ile sorgulanabilen kişisel arşiv sistemi (ticari değil). Standart kütüphane Python 3, SQLite.
 
@@ -11,7 +11,7 @@ Ankara EGO otobüslerinin hangi hatta, hangi saatte ve hangi duraklardan geçti�
 ## Sunucu kurulumu (Ubuntu/Debian VPS)
 1. `bash vps/vps_test.sh` (IP Türkiye mi, servisler açılıyor mu)
 2. Eski veritabanını `/root/ego_filo.db` olarak yükle
-3. `bash vps/kur.sh filo.ulasimarsiv.com SIFRE git@github.com:framiodev/ego-filo-takip.git`
+3. `bash vps/kur.sh filo.ulasimarsiv.com SIFRE git@github.com:framiodev/filo-takip.git`
    Betik bir deploy anahtarı yazdırır; GitHub > Settings > Deploy keys'e ekle.
 
 ## Güncelleme akışı
@@ -19,3 +19,6 @@ Ankara EGO otobüslerinin hangi hatta, hangi saatte ve hangi duraklardan geçti�
 
 ## Veri
 `*.db`, günlükler ve raporlar repoya **girmez** (`.gitignore`). Günlük yedek: `/opt/filo-takip/yedek/` (7 gün).
+
+## Çok şehirli yapı (plan)
+Şu an yalnız Ankara/EGO etkin. Yeni şehir eklemek için her şehrin veri kaynağı ayrı bir "şehir bağdaştırıcısı" olarak yazılacak (hat listesi, canlı konum, filo kodu/plaka alanları) ve ortak veritabanı/arayüz tekrar kullanılacak. Adaylar: İstanbul (İBB/İETT açık veri), İzmir (ESHOT açık veri). Her şehir yalnızca resmi açık veri veya herkese açık servisleri kullanır.
