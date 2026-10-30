@@ -1,5 +1,5 @@
 {
- "_not": "Model adında 'eslesen' geçen ilk kayıt kullanılır. Renkler gerçek araç fotoğraflarından yaklaşık okunmuştur. no: hat numarası rengi, ust/alt: 1. ve 2. satır, arka: panel zemini, nokta: nokta aralığı (px), dogrulandi: fotoğraftan doğrulandı mı.",
+ "_not": "Model adında 'eslesen' geçen ilk kayıt kullanılır. Renkler gerçek araç fotoğraflarından yaklaşık okunmuştur. no: hat numarası rengi, ust/alt: 1. ve 2. satır, arka: panel zemini, nokta: nokta aralığı (px), dogrulandi: fotoğraftan doğrulandı mı. pul: true ise pullu (flip-dot) tabela gibi çizilir: mat daireler, parlama yok, değişimde çevrilme.",
  "varsayilan": {
   "arka": "#050505",
   "no": "#ff9a1a",
@@ -36,19 +36,25 @@
   },
   {
    "eslesen": "a74",
-   "arka": "#202a1b",
-   "no": "#d5dc4a",
-   "ust": "#d5dc4a",
-   "alt": "#d5dc4a",
-   "dogrulandi": true
+   "arka": "#10130c",
+   "no": "#d8df4e",
+   "ust": "#d8df4e",
+   "alt": "#d8df4e",
+   "dogrulandi": true,
+   "pul": true,
+   "nokta": 4,
+   "iki_satir": false
   },
   {
    "eslesen": "lion's classic",
-   "arka": "#202a1b",
-   "no": "#d5dc4a",
-   "ust": "#d5dc4a",
-   "alt": "#d5dc4a",
-   "dogrulandi": true
+   "arka": "#10130c",
+   "no": "#d8df4e",
+   "ust": "#d8df4e",
+   "alt": "#d8df4e",
+   "dogrulandi": true,
+   "pul": true,
+   "nokta": 4,
+   "iki_satir": false
   },
   {
    "eslesen": "citaro",
