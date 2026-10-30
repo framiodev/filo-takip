@@ -53,6 +53,7 @@ input:focus{outline:2px solid var(--accent);outline-offset:1px}
 .form .btn{grid-column:1/-1}
 @media(min-width:760px){.form .btn{grid-column:auto}.form{grid-template-columns:2fr 1fr 1fr auto}.adv{grid-column:1/-1}}
 @media(max-width:620px){.form,.form.two{grid-template-columns:1fr 1fr}.form .field.grow{grid-column:1/-1}}
+.vtabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}.vtabs button{padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:.82rem;cursor:pointer}.vtabs button.on{background:var(--brand,#c8102e);border-color:var(--brand,#c8102e);color:#fff}
 .vhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
 .plate{font-weight:800;font-size:1.25rem;letter-spacing:.5px;border:2px solid var(--ink);border-radius:8px;padding:2px 10px}
 .chip{background:var(--chip);border-radius:999px;padding:3px 11px;font-size:.88rem;font-weight:600}
@@ -421,20 +422,33 @@ document.querySelectorAll('.vmap').forEach(function(el){
  var g=JSON.parse(el.getAttribute('data-geo')),map=L.map(el,{preferCanvas:true});
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
  var all=[],last=null,lastHat=g.h||'';
- var prev=L.layerGroup().addTo(map),nt=g.trips.length;
+ var nt=g.trips.length,groups=[],vlast=null,tabs=document.createElement('div');
+ tabs.className='vtabs';
  g.trips.forEach(function(t,i){
-  var isLast=(i===nt-1),c=cols[i%cols.length],ll=t.p.map(function(x){return [x[0],x[1]];});all=all.concat(ll);
-  var grp=isLast?map:prev;
-  if(isLast){
-   L.polyline(ll,{color:c,weight:4,opacity:.85}).addTo(grp).bindTooltip('Sefer '+(i+1)+' · Hat '+esc(t.h));
-   t.p.forEach(function(x){L.circleMarker([x[0],x[1]],{radius:3,color:c,weight:1,fillColor:c,fillOpacity:.9}).addTo(grp).bindTooltip(esc(x[2])+' · Hat '+esc(t.h));});
-  }else{
-   L.polyline(ll,{color:c,weight:2,opacity:.35,dashArray:'4 6'}).addTo(grp).bindTooltip('Sefer '+(i+1)+' · Hat '+esc(t.h));
-  }
-  L.circleMarker(ll[0],{radius:isLast?6:4,color:'#fff',weight:2,fillColor:c,fillOpacity:1}).addTo(grp).bindTooltip('Sefer '+(i+1)+' başlangıç '+esc(t.p[0][2])+' · Hat '+esc(t.h));
+  var c=cols[i%cols.length],ll=t.p.map(function(x){return [x[0],x[1]];}),grp=L.layerGroup();all=all.concat(ll);
+  L.polyline(ll,{color:c,weight:4,opacity:.85}).addTo(grp).bindTooltip('Sefer '+(i+1)+' · Hat '+esc(t.h));
+  t.p.forEach(function(x){L.circleMarker([x[0],x[1]],{radius:3,color:c,weight:1,fillColor:c,fillOpacity:.9}).addTo(grp).bindTooltip(esc(x[2])+' · Hat '+esc(t.h));});
+  L.circleMarker(ll[0],{radius:6,color:'#fff',weight:2,fillColor:c,fillOpacity:1}).addTo(grp).bindTooltip('Sefer '+(i+1)+' başlangıç '+esc(t.p[0][2])+' · Hat '+esc(t.h));
+  groups.push({g:grp,ll:ll});
   last=t.p[t.p.length-1];lastHat=t.h;
+  if(nt>1){var b=document.createElement('button');b.type='button';b.textContent='Sefer '+(i+1)+' · '+esc(t.h);b.title=esc(t.p[0][2]);b.setAttribute('data-i',i);tabs.appendChild(b);}
  });
- if(nt>1){L.control.layers(null,{'Önceki seferler':prev},{collapsed:false,position:'topright'}).addTo(map);}
+ var cur=-1;
+ function show(i){
+  groups.forEach(function(x,k){if(i===-1||k===i){x.g.addTo(map);}else{map.removeLayer(x.g);}});
+  cur=i;
+  var pts=[];(i===-1?groups:[groups[i]]).forEach(function(x){pts=pts.concat(x.ll);});
+  if(vlast)pts.push(vlast);
+  if(pts.length)map.fitBounds(pts,{padding:[34,34],maxZoom:16});
+  [].forEach.call(tabs.children,function(b){b.className=(+b.getAttribute('data-i')===i||(i===-1&&b.getAttribute('data-i')==='all'))?'on':'';});
+ }
+ if(nt>1){
+  var ball=document.createElement('button');ball.type='button';ball.textContent='Tümü';ball.setAttribute('data-i','all');tabs.appendChild(ball);
+  el.parentNode.insertBefore(tabs,el);
+  tabs.addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;var v=b.getAttribute('data-i');show(v==='all'?-1:+v);});
+  var card=el.closest('.card')||el.parentNode;
+  card.querySelectorAll('details>summary').forEach(function(sm,k){sm.addEventListener('click',function(){if(k<nt){show(k);el.scrollIntoView({block:'nearest',behavior:'smooth'});}});});
+ }
  var label='';
  if(last){label='Son konum '+last[2]+(g.bugun&&ago(last[3])?' ('+ago(last[3])+')':'');}
  else if(g.son){last=[g.son.la,g.son.lo,g.son.t,g.son.e];lastHat=g.son.h;all.push([g.son.la,g.son.lo]);label='Son bilinen konum '+g.son.t+' · Hat '+g.son.h;}
@@ -442,7 +456,8 @@ document.querySelectorAll('.vmap').forEach(function(el){
  var mk=L.circleMarker([last[0],last[1]],{radius:10,color:'#fff',weight:3,fillColor:'#c8102e',fillOpacity:1}).addTo(map);
  mk.bindTooltip(esc(label),{permanent:true,direction:'top',offset:[0,-8]});
  all.push([last[0],last[1]]);
- map.fitBounds(all,{padding:[34,34],maxZoom:16});
+ vlast=[last[0],last[1]];
+ if(groups.length){show(nt-1);}else{map.fitBounds(all,{padding:[34,34],maxZoom:16});}
  var btn=el.parentNode.querySelector('.vlive'),now=el.parentNode.querySelector('.vnow'),st=el.parentNode.querySelector('.vlives');
  var DL={'az':'🟢 Az yoğun','orta':'🟡 Orta yoğun','çok':'🔴 Çok yoğun','dolu':'🔴 Dolu'};
  function dolTxt(d){for(var k in DL){if(d&&d.indexOf(k)===0)return DL[k];}return '';}
