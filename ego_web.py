@@ -213,7 +213,7 @@ def make_handler(E):
     CITY_DB = {"istanbul": os.environ.get("IETT_DB", os.path.join(_here, "iett_filo.db")),
                "izmir": os.environ.get("IZMIR_DB", os.path.join(_here, "izmir_filo.db"))}
     for _c, _p in CITY_DB.items():
-        CITY_BY_ID[_c]["aktif"] = os.path.exists(_p)
+        CITY_BY_ID[_c]["aktif"] = os.path.exists(_p) and not (_c == "izmir" and os.environ.get("IZMIR_GOSTER") != "1")
 
     def city_meta():
         return CITY_BY_ID.get(cur_city(), CITY_BY_ID["ankara"])
@@ -1208,6 +1208,8 @@ document.querySelectorAll('.vmap').forEach(function(el){
     def page_sehir(g):
         kart = []
         for c in CITIES:
+            if c["id"] == "izmir" and not c["aktif"]:
+                continue  # İzmir şimdilik gizli (plaka verisi yok); veri korunur, IZMIR_GOSTER=1 ile açılır
             if c["aktif"]:
                 st = city_stats(c["id"])
                 alt = ""

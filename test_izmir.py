@@ -83,6 +83,7 @@ def _get(self):
         _orig(self)
 Mock.do_GET = _get
 os.environ["IZMIR_DB"] = Z.DB
+os.environ["IZMIR_GOSTER"] = "1"
 web = Z.E.ThreadingHTTPServer(("127.0.0.1", 0), Z.E.make_handler())
 threading.Thread(target=web.serve_forever, daemon=True).start()
 rq = urllib.request.Request("http://127.0.0.1:%d/durak?no=10005" % web.server_address[1]); rq.add_header("Cookie", "sehir=izmir")
