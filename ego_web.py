@@ -155,6 +155,7 @@ a.city:hover{box-shadow:0 4px 18px rgba(255,180,0,.15)}
 .fr-plate{border-color:var(--accent);color:var(--accent)}
 .fr-arrow div{color:var(--accent)!important;text-shadow:0 0 3px #000!important}
 .leaflet-container{background:#0b1220}
+.leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.82) contrast(.92) saturate(.55)}
 @media (min-width:761px){
  nav{position:fixed;left:0;top:var(--hh);bottom:0;width:var(--rail);z-index:1900;flex:none;order:0;flex-direction:column;flex-wrap:nowrap;gap:2px;margin:0;padding:10px 6px;
   background:#0c1424;border-top:0;border-right:1px solid var(--line);overflow:auto}
@@ -495,7 +496,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){retur
 function ago(e){var m=Math.max(0,Math.round((Date.now()/1000-e)/60));return m<120?m+' dk önce':'';}
 document.querySelectorAll('.vmap').forEach(function(el){
  var g=JSON.parse(el.getAttribute('data-geo')),map=L.map(el,{preferCanvas:true});
- L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19,attribution:'&copy; OpenStreetMap &copy; CARTO'}).addTo(map);
+ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
  var all=[],last=null,lastHat=g.h||'';
  var nt=g.trips.length,groups=[],vlast=null,tabs=document.createElement('div');
  tabs.className='vtabs';
@@ -1624,7 +1625,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
     MAP_JS = """
 (function(){
 var map=L.map('map',{preferCanvas:true}).setView(__MERKEZ__);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19,attribution:'&copy; OpenStreetMap &copy; CARTO'}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
 var layer=(L.markerClusterGroup?L.markerClusterGroup({disableClusteringAtZoom:15,maxClusterRadius:45,showCoverageOnHover:false,chunkedLoading:true}):L.layerGroup()).addTo(map),data=[];
 if(!layer.addLayers){layer.addLayers=function(a){a.forEach(function(x){layer.addLayer(x);});};layer.zoomToShowLayer=function(m,f){f();};}
 function $(i){return document.getElementById(i);}
