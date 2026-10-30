@@ -447,7 +447,7 @@ def make_handler(E):
             '<link rel="icon" href="/icon.svg" type="image/svg+xml">'
             f"<title>{esc(title.replace('EGO Filo Takip', city_meta()['kisa'] + ' Filo Takip'))}</title>"
             '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-            '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap&subset=latin-ext">'
+            '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Pixelify+Sans:wght@400;600&display=swap&subset=latin-ext">'
             "<script>" + SUN_JS.replace("__LA__", str(city_meta()["merkez"][0])).replace("__LO__", str(city_meta()["merkez"][1])) + "</script>"
             f"<style>{CSS}{brand_css()}</style></head><body{' class=\"mapmode\"' if mapmode else ''}>"
             '<header><div class="bar"><a class="brand" href="/"><span class="logo">🚌</span>Filo Takip</a>'
@@ -1747,16 +1747,31 @@ function info(a){
 }
 function upd(a){var h=panel.querySelector('.fr-head'),i=panel.querySelector('.fr-info');if(h)h.innerHTML=head(a);if(i)i.innerHTML=info(a);}
 function sec(t,h,o){return '<button class="pc-sec" aria-expanded="'+(o?'true':'false')+'">'+t+'</button><div class="pc-body"'+(o?'':' hidden')+'>'+h+'</div>';}
+function startLed(a,hat,dest,TR){
+ var box=panel.querySelector('.led'),t=panel.querySelector('.led-t');if(!box||!t)return;
+ clearTimeout(panel._ledT);var k=0,reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+ function show(){
+  if(!panel.contains(box)||selA!==a){return;}
+  var live=(selA&&selA.d)?TR(selA.d):'',txt=(k%2===1&&live)?'SIRADAKİ DURAK  '+live:hat+'  '+dest;k++;
+  t.style.animation='none';t.textContent=txt;void t.offsetWidth;
+  var w=t.scrollWidth,W=box.clientWidth,ms=4200;
+  if(w>W&&!reduce){var dur=Math.max(4,(w+W)/70);t.style.setProperty('--s',W+'px');t.style.setProperty('--e',w+'px');t.style.animation='ledscroll '+dur+'s linear 1';ms=dur*1000+500;}
+  panel._ledT=setTimeout(show,ms);
+ }
+ show();
+}
 function routeBlock(a){
  getRota(a.h).then(function(rota){
   var bx=panel.querySelector('.pc-rt'),pg=panel.querySelector('.pc-pg');if(selA!==a||!bx||!rota||rota.length<2){if(bx)bx.style.display='none';return;}
   var f=rota[0],l=rota[rota.length-1];function cd(n){return String(n||'?').slice(0,3).toLocaleUpperCase('tr');}
-  bx.innerHTML='<div><div class="big">'+esc(cd(f[3]))+'</div><div class="nm">'+esc(f[3]||'')+'</div><div class="sb">Başlangıç</div></div><div><div class="big">'+esc(cd(l[3]))+'</div><div class="nm">'+esc(l[3]||'')+'</div><div class="sb">Bitiş</div></div><span class="mid">🚌</span>';
+  var TR=function(x){return String(x||'').toLocaleUpperCase('tr');};
+  bx.innerHTML='<div class="led"><div class="led-t"></div></div><div class="led-sub"><span>'+esc(f[3]||'')+'</span><span>→</span><span>'+esc(l[3]||'')+'</span></div>';
+  startLed(a,TR(a.h),TR(l[3]||''),TR);
   if(a.sr!=null&&l[2]>f[2]){var fr=Math.max(0,Math.min(1,(a.sr-f[2])/(l[2]-f[2])))*100;
    pg.innerHTML='<div class="bar2"><i style="width:'+fr.toFixed(0)+'%"></i></div><div class="pr"><span>'+a.sr+'. durak</span><span>%'+fr.toFixed(0)+' · toplam '+rota.length+' durak</span></div>';}
  });
 }
-function closePanel(){panel.style.display='none';trail.clearLayers();if(selM&&selA){styleOf(selM,selA,false);}selM=selA=null;}
+function closePanel(){clearTimeout(panel._ledT);panel.style.display='none';trail.clearLayers();if(selM&&selA){styleOf(selM,selA,false);}selM=selA=null;}
 function styleOf(m,a,on){var live=a.age<=15;m.setStyle(on?{radius:10,color:'#fff',weight:3,fillColor:'#c8102e',fillOpacity:1}:{radius:live?7:5,color:live?'#166534':'#6b7280',fillColor:live?'#22c55e':'#9ca3af',fillOpacity:live?.9:.6,weight:1});}
 var rotaCache={};
 function getRota(h){
@@ -1910,8 +1925,13 @@ load();loadStops();setInterval(load,60000);
 .fr-opr{color:#aeb9ca;font-size:.82rem;margin-top:4px}
 .pc-s{overflow:auto;flex:1;min-height:0}
 .pc-s .fr-photo{margin:0}
-.pc-rt{display:grid;grid-template-columns:1fr 1fr;background:var(--chip);position:relative}
-.pc-rt>div{padding:14px 8px 10px;text-align:center}.pc-rt .big{font-weight:800;font-size:1.9rem;line-height:1}
+.pc-rt{background:var(--chip);padding:12px 0 2px}
+.led{position:relative;background:#050505;border:3px solid #1d1d1d;border-radius:8px;margin:0 14px;height:56px;overflow:hidden;box-shadow:inset 0 0 14px #000,0 0 0 1px #3a3a3a}
+.led-t{position:absolute;top:0;left:0;height:100%;display:flex;align-items:center;white-space:nowrap;padding:0 14px;font:600 30px/1 'Pixelify Sans','DotGothic16',monospace;color:#ffb000;text-shadow:0 0 7px rgba(255,176,0,.85);letter-spacing:2px;will-change:transform}
+.led:after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 50%,transparent 36%,#050505 47%) 0 0/4px 4px}
+@keyframes ledscroll{from{transform:translateX(var(--s))}to{transform:translateX(calc(-1 * var(--e)))}}
+.led-sub{display:flex;justify-content:space-between;gap:8px;padding:7px 16px 9px;font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700}
+@media(prefers-reduced-motion:reduce){.led-t{animation:none!important}}
 .pc-rt .nm{font-weight:700;font-size:.8rem;margin-top:6px;text-transform:uppercase}.pc-rt .sb{font-size:.7rem;color:var(--muted);margin-top:2px}
 .pc-rt .mid{position:absolute;left:50%;top:50%;width:40px;height:40px;border-radius:50%;background:var(--card);transform:translate(-50%,-50%);display:grid;place-items:center}
 .pc-tm{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-top:2px}
