@@ -1767,7 +1767,7 @@ function startLed(a,hat,l1,l2,adi){
  cancelAnimationFrame(panel._ledR);
  var st=ledStil(a.m),p=st.nokta||3,cols=Math.floor(box.clientWidth/p),rows=24,dpr=window.devicePixelRatio||1,ctx=cv.getContext('2d');
  cv.style.width=cols*p+'px';cv.style.height=rows*p+'px';cv.width=cols*p*dpr;cv.height=rows*p*dpr;box.style.background=st.arka;
- var hs=(hat||'').split('-')[0],ns=hs.length>3?1:2,nb=ledBits(hs,ns),nx=2,tx=nx+nb.w+3,tw=Math.max(8,cols-tx-2);
+ var hs=(hat||'').split('-')[0],ns=(st.pul||hs.length>3)?1:2,nb=ledBits(hs,ns),nx=2,tx=nx+nb.w+3,tw=Math.max(8,cols-tx-1);
  var L1=ledBits(l1||'',1),L2=ledBits(l2||'',1),two=st.iki_satir&&l1;
  var pulPages=null;if(st.pul){var mc=Math.max(4,Math.floor(tw/6)),wd=(adi||l2||l1||'').replace(/\\s*[-–]\\s*/g,' - ').split(/\\s+/),ln=[],cur='';
   wd.forEach(function(w){while(w.length>mc){if(cur){ln.push(cur);cur='';}ln.push(w.slice(0,mc));w=w.slice(mc);}
