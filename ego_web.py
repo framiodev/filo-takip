@@ -965,9 +965,9 @@ document.querySelectorAll('.vmap').forEach(function(el){
                 csv_bytes(["tarih", "plaka", "filo_no", "marka_model", "tip", "hat", "ilk_gorulme", "son_gorulme"], out))
 
     # ------------------------------------------------------------------ Şehir seçimi
-    def city_stats():
+    def city_stats(cid="ankara"):
         try:
-            conn = E.connect()
+            conn = E.connect(IST_DB if cid == "istanbul" else E.DB_PATH)
             try:
                 n = conn.execute("SELECT COUNT(DISTINCT plaka) FROM stints").fetchone()[0]
                 fd = first_data_day(conn)
@@ -978,10 +978,10 @@ document.querySelectorAll('.vmap').forEach(function(el){
         return n, fd
 
     def page_sehir(g):
-        st = city_stats()
         kart = []
         for c in CITIES:
             if c["aktif"]:
+                st = city_stats(c["id"])
                 alt = ""
                 if st and st[0]:
                     alt = (f'<div class="stat"><b>{f"{st[0]:,}".replace(",", ".")}</b> araç kayıtlı'
