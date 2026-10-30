@@ -253,13 +253,16 @@ def cmd_run(args):
     sira_of = {(h, d): s for h, d, s in conn.execute("SELECT hat, durak, sira FROM line_route")}
     gap = int(args.interval * 60 * 3)
     idle = {}
-    fl_warned, last_fl = False, {}
+    fl_warned, last_fl, fl_ts = False, {}, 0.0
     print(f"İETT toplayıcı: {len(kods)} hat, {args.interval} dk aralık.", flush=True)
     while not STOP.is_set():
         t0 = time.time()
         ts = E.now_ts()
-        fl = fleet(http)
+        fl = fleet(http) if time.time() - fl_ts >= 900 else last_fl
+        if fl is not None and fl is not last_fl:
+            fl_ts = time.time()
         if fl is None:
+            fl_ts = time.time() - 600  # başarısızsa 5 dk sonra yeniden dene
             # Filo listesi (plaka eşlemesi) alınamazsa hat sorgularıyla devam et; son iyi listeyi kullan
             if not fl_warned:
                 print("Filo listesi alınamadı, plakasız devam ediliyor:", soap.last_error, flush=True)
@@ -296,6 +299,10 @@ def cmd_run(args):
                 if n % 100 == 0:
                     conn.commit()
                     print(f"  ... {n}/{len(due)} hat, {veh} araç", flush=True)
+        if due and fails >= len(due) * 0.9 and veh == 0:
+            print(f"Hat sorguları başarısız ({fails}/{len(due)}): {soap.last_error} - 10 dk bekleniyor", flush=True)
+            STOP.wait(600)
+            continue
         conn.execute("INSERT OR REPLACE INTO meta (k, v) VALUES ('last_cycle', ?)",
                      (json.dumps({"ts": E.now_ts(), "due": len(due), "vehicles": veh, "fails": fails, "interval": args.interval,
                                   "fleet": len(fl)}),))
@@ -329,7 +336,7 @@ def main(argv=None):
     p.add_argument("--interval", type=float, default=3, help="tur aralığı (dk)")
     p.add_argument("--delay", type=float, default=0.15)
     p.add_argument("--idle-max", type=int, default=3)
-    p.add_argument("--workers", type=int, default=6, help="paralel sorgu sayısı")
+    p.add_argument("--workers", type=int, default=3, help="paralel sorgu sayısı")
     p.add_argument("--no-raw", action="store_true")
     p.add_argument("--once", action="store_true")
     p.set_defaults(fn=cmd_run)
