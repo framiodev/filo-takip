@@ -33,3 +33,6 @@ Ankara EGO otobüslerinin hangi hatta, hangi saatte ve hangi duraklardan geçti�
 
 ## Çok şehirli yapı (plan)
 Şu an yalnız Ankara/EGO etkin. Yeni şehir eklemek için her şehrin veri kaynağı ayrı bir "şehir bağdaştırıcısı" olarak yazılacak (hat listesi, canlı konum, filo kodu/plaka alanları) ve ortak veritabanı/arayüz tekrar kullanılacak. Adaylar: İstanbul (İBB/İETT açık veri), İzmir (ESHOT açık veri). Her şehir yalnızca resmi açık veri veya herkese açık servisleri kullanır.
+
+## İstanbul (İETT) – hazırlık aşaması
+`iett_tracker.py`: İBB açık veri servislerinden (kimlik gerekmez) hat, koordinatlı durak ve canlı araç konumu toplar; Ankara ile aynı şemada ayrı veritabanına (`iett_filo.db`) yazar. `python3 iett_tracker.py probe` → servisleri dener, `init` → 782 hattın duraklarını çeker, `run` → döngü. Henüz sunucuda servis olarak çalışmıyor ve arayüze bağlı değil. Test: `python3 test_iett.py`.

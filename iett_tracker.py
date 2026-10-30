@@ -1,0 +1,277 @@
+"""İstanbul (İETT) toplayıcısı - İBB açık veri servislerinden (SOAP/JSON) hat, durak ve canlı araç konumu.
+
+Ankara toplayıcısıyla aynı veritabanı şemasını kullanır (ego_tracker.SCHEMA), ayrı dosyaya yazar:
+  IETT_DB (varsayılan: iett_filo.db)
+
+Kaynaklar (İBB Açık Veri, kimlik doğrulama yok):
+  SeferGerceklesme.GetFiloAracKonum_json   tüm filo tek çağrıda: KapiNo, Plaka, Enlem, Boylam, Hiz, Operator
+  SeferGerceklesme.GetHatOtoKonum_json     hat bazlı: kapino, hatkodu, guzergahkodu (ör. 500T_G_D0), yon, yakinDurakKodu
+  HatDurakGuzergah.GetHat_json             tüm hatlar (SHATKODU, SHATADI)
+  ibb.DurakDetay_GYY                       hattın durakları: YON, SIRANO, DURAKKODU, DURAKADI, X/YKOORDINATI
+  PlanlananSeferSaati.GetPlanlananSeferSaati_json  planlanan saatler (SYON G/D, SGUNTIPI I/C/P, DT)
+
+Hat anahtarı: "<HATKODU> <G|D>" (yön ayrı hat gibi tutulur; Ankara'daki 145-1/145-2 gibi).
+Komutlar: probe | init | run | saatler
+"""
+import argparse
+import html
+import json
+import os
+import re
+import sys
+import threading
+import time
+import urllib.request
+import xml.etree.ElementTree as ET
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+BASE = os.environ.get("IETT_BASE", "https://api.ibb.gov.tr/iett").rstrip("/")
+DB = os.environ.get("IETT_DB", os.path.join(HERE, "iett_filo.db"))
+STOP = threading.Event()
+
+import ego_tracker as E  # noqa: E402  (ortak şema, kayıt ve yardımcılar)
+
+PATHS = {
+    "fleet": "/FiloDurum/SeferGerceklesme.asmx",
+    "hatoto": "/FiloDurum/SeferGerceklesme.asmx",
+    "hats": "/UlasimAnaVeri/HatDurakGuzergah.asmx",
+    "stops": "/ibb/ibb.asmx",
+    "plan": "/UlasimAnaVeri/PlanlananSeferSaati.asmx",
+}
+
+EXTRA_SCHEMA = """
+CREATE TABLE IF NOT EXISTS stops_geo (durak TEXT PRIMARY KEY, ad TEXT, lat REAL, lng REAL);
+"""
+
+
+def connect():
+    conn = E.connect(DB)
+    conn.executescript(EXTRA_SCHEMA)
+    return conn
+
+
+def soap(http, group, method, **params):
+    """SOAP çağrısı -> Result metni (JSON ya da XML dizesi). Hata/boş: None."""
+    body = ('<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">'
+            f'<soap:Body><{method} xmlns="http://tempuri.org/">'
+            + "".join(f"<{k}>{html.escape(str(v))}</{k}>" for k, v in params.items())
+            + f"</{method}></soap:Body></soap:Envelope>").encode("utf-8")
+    try:
+        raw = http.request(BASE + PATHS[group], data=body, timeout=60, headers={
+            "Content-Type": "text/xml; charset=utf-8", "SOAPAction": "http://tempuri.org/" + method,
+            "User-Agent": "Mozilla/5.0 (FiloTakip arsiv)"}).decode("utf-8", "replace")
+    except Exception as e:
+        soap.last_error = str(e)
+        return None
+    m = re.search(r"<\w*Result[^>]*>(.*?)</\w*Result>", raw, re.S)
+    return html.unescape(m.group(1)) if m else None
+
+
+soap.last_error = ""
+
+
+def jrows(text):
+    if not text:
+        return None
+    try:
+        d = json.loads(text)
+    except ValueError:
+        return None
+    return [r for r in d if isinstance(r, dict)] if isinstance(d, list) else None
+
+
+def fleet(http):
+    """{kapino: {plaka, lat, lng, hiz, operator, saat}} - tüm filo."""
+    rows = jrows(soap(http, "fleet", "GetFiloAracKonum_json"))
+    if rows is None:
+        return None
+    out = {}
+    for r in rows:
+        k = str(r.get("KapiNo") or "").strip()
+        if k:
+            out[k] = {"plaka": str(r.get("Plaka") or "").strip(), "lat": r.get("Enlem"), "lng": r.get("Boylam"),
+                      "hiz": r.get("Hiz"), "operator": r.get("Operator"), "saat": r.get("Saat")}
+    return out
+
+
+def yon_of(row):
+    """guzergahkodu 500T_G_D0 -> 'G'; yoksa 'yon' alanından tahmin."""
+    m = re.search(r"_([GD])_", str(row.get("guzergahkodu") or ""))
+    return m.group(1) if m else ""
+
+
+def hat_key(kod, yon):
+    return f"{kod} {yon}".strip()
+
+
+def list_lines(http):
+    rows = jrows(soap(http, "hats", "GetHat_json", HatKodu=""))
+    return [(str(r.get("SHATKODU")).strip(), str(r.get("SHATADI") or "").strip()) for r in rows or [] if r.get("SHATKODU")]
+
+
+def line_stops(http, kod):
+    """-> [(yon, sira, durak_kodu, ad, lat, lng)] (DurakDetay_GYY XML)."""
+    text = soap(http, "stops", "DurakDetay_GYY", hat_kodu=kod)
+    if not text:
+        return None
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return None
+    out = []
+    for t in root.iter("Table"):
+        g = lambda n: (t.findtext(n) or "").strip()
+        try:
+            out.append((g("YON"), int(g("SIRANO")), g("DURAKKODU"), g("DURAKADI"),
+                        float(g("YKOORDINATI") or 0), float(g("XKOORDINATI") or 0)))
+        except ValueError:
+            continue
+    return out
+
+
+def line_vehicles(http, kod):
+    return jrows(soap(http, "hatoto", "GetHatOtoKonum_json", HatKodu=kod))
+
+
+def to_ego_row(r, fl, sira_of):
+    """İETT satırı + filo konumu -> ego_tracker.record_sighting'in beklediği alan adları."""
+    kapi = str(r.get("kapino") or "").strip()
+    f = fl.get(kapi, {})
+    kod, yon = str(r.get("hatkodu") or "").strip(), yon_of(r)
+    durak = str(r.get("yakinDurakKodu") or "").strip()
+    return {
+        "arac_no": kapi, "plaka_no": f.get("plaka", ""),
+        "lat": r.get("enlem"), "lng": r.get("boylam"), "hiz": f.get("hiz", ""),
+        "durak_no": durak, "durak_sira_no": sira_of.get((hat_key(kod, yon), durak), ""),
+        "konum_tarihi": r.get("son_konum_zamani", ""), "detay": "",
+    }, hat_key(kod, yon)
+
+
+def cmd_probe(args):
+    http = E.Http(args.insecure)
+    fl = fleet(http)
+    print("Filo:", "yok (%s)" % soap.last_error if fl is None else f"{len(fl)} araç; örnek: {next(iter(fl.items()))}")
+    lines = list_lines(http)
+    print("Hat sayısı:", len(lines), lines[:3])
+    v = line_vehicles(http, args.hat)
+    print(f"Hat {args.hat} araçları:", None if v is None else len(v), (v or [None])[0])
+    s = line_stops(http, args.hat)
+    print(f"Hat {args.hat} durakları:", None if s is None else len(s), (s or [None])[:2])
+    return 0
+
+
+def cmd_init(args):
+    conn = connect()
+    http = E.Http(args.insecure)
+    lines = list_lines(http)
+    if not lines:
+        print("Hat listesi alınamadı:", soap.last_error)
+        return 1
+    done = {r[0] for r in conn.execute("SELECT DISTINCT substr(hat,1,length(hat)-2) FROM line_route")}
+    todo = [l for l in lines if l[0] not in done]
+    if args.limit:
+        todo = todo[: args.limit]
+    print(f"{len(lines)} hat, {len(todo)} tanesinin durakları çekilecek.")
+    n = 0
+    for kod, ad in todo:
+        if STOP.is_set():
+            break
+        st = line_stops(http, kod)
+        time.sleep(args.delay)
+        if not st:
+            continue
+        for yon in sorted({s[0] for s in st}):
+            key = hat_key(kod, yon)
+            conn.execute("INSERT OR REPLACE INTO lines (hat, ad) VALUES (?,?)", (key, ad))
+            for y, sira, durak, dad, la, lo in st:
+                if y != yon:
+                    continue
+                conn.execute("INSERT OR REPLACE INTO line_route (hat, sira, durak, ad) VALUES (?,?,?,?)", (key, sira, durak, dad))
+                conn.execute("INSERT OR IGNORE INTO line_stops (hat, durak) VALUES (?,?)", (key, durak))
+                conn.execute("INSERT OR REPLACE INTO stops_geo (durak, ad, lat, lng) VALUES (?,?,?,?)", (durak, dad, la, lo))
+        n += 1
+        if n % 25 == 0:
+            conn.commit()
+            print(f"  {n}/{len(todo)}")
+    conn.commit()
+    print("Bitti.", conn.execute("SELECT COUNT(*) FROM lines").fetchone()[0], "hat-yön,",
+          conn.execute("SELECT COUNT(*) FROM stops_geo").fetchone()[0], "durak.")
+    return 0
+
+
+def cmd_run(args):
+    conn = connect()
+    http = E.Http(args.insecure)
+    kods = sorted({k.rsplit(" ", 1)[0] for (k,) in conn.execute("SELECT hat FROM lines")})
+    if not kods:
+        print("Önce 'python3 iett_tracker.py init' çalıştırın.")
+        return 1
+    sira_of = {(h, d): s for h, d, s in conn.execute("SELECT hat, durak, sira FROM line_route")}
+    gap = int(args.interval * 60 * 3)
+    idle = {}
+    print(f"İETT toplayıcı: {len(kods)} hat, {args.interval} dk aralık.", flush=True)
+    while not STOP.is_set():
+        t0 = time.time()
+        ts = E.now_ts()
+        fl = fleet(http)
+        if fl is None:
+            print("Filo alınamadı:", soap.last_error, flush=True)
+            STOP.wait(30)
+            continue
+        due = [k for k in kods if idle.get(k, 0) <= 0]
+        for k in kods:
+            if k not in due:
+                idle[k] -= 1
+        new = veh = fails = 0
+        for kod in due:
+            if STOP.is_set():
+                break
+            rows = line_vehicles(http, kod)
+            time.sleep(args.delay)
+            if rows is None:
+                fails += 1
+                continue
+            idle[kod] = 0 if rows else args.idle_max
+            for r in rows:
+                row, key = to_ego_row(r, fl, sira_of)
+                if E.record_sighting(conn, ts, row, key, gap, keep_raw=not args.no_raw):
+                    new += 1
+                veh += 1
+        conn.execute("INSERT OR REPLACE INTO meta (k, v) VALUES ('last_cycle', ?)",
+                     (json.dumps({"ts": E.now_ts(), "due": len(due), "vehicles": veh, "fails": fails, "interval": args.interval,
+                                  "fleet": len(fl)}),))
+        conn.commit()
+        print(f"[{E.fmt_ts(E.now_ts(), False)}] filo {len(fl)} · {len(due)} hat, {veh} araç, {new} yeni, {fails} hata", flush=True)
+        if args.once:
+            break
+        STOP.wait(max(10, args.interval * 60 - (time.time() - t0)))
+    conn.commit()
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="İETT (İstanbul) filo takip", epilog=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--insecure", action="store_true")
+    sub = ap.add_subparsers(dest="cmd")
+    sub.required = True
+    p = sub.add_parser("probe")
+    p.add_argument("--hat", default="500T")
+    p.set_defaults(fn=cmd_probe)
+    p = sub.add_parser("init")
+    p.add_argument("--limit", type=int, default=0)
+    p.add_argument("--delay", type=float, default=0.3)
+    p.set_defaults(fn=cmd_init)
+    p = sub.add_parser("run")
+    p.add_argument("--interval", type=float, default=3, help="tur aralığı (dk)")
+    p.add_argument("--delay", type=float, default=0.15)
+    p.add_argument("--idle-max", type=int, default=3)
+    p.add_argument("--no-raw", action="store_true")
+    p.add_argument("--once", action="store_true")
+    p.set_defaults(fn=cmd_run)
+    args = ap.parse_args(argv)
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
