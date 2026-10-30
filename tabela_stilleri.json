@@ -11,6 +11,30 @@
  },
  "modeller": [
   {
+   "eslesen": "iii. nesil",
+   "arka": "#050505",
+   "no": "#58f06c",
+   "ust": "#ffd23a",
+   "alt": "#ff9a1a",
+   "dogrulandi": true
+  },
+  {
+   "eslesen": "conecto ngt",
+   "arka": "#050505",
+   "no": "#58f06c",
+   "ust": "#ffd23a",
+   "alt": "#ff9a1a",
+   "dogrulandi": true
+  },
+  {
+   "eslesen": "yeni jenerasyon",
+   "arka": "#050505",
+   "no": "#58f06c",
+   "ust": "#ffd23a",
+   "alt": "#ff9a1a",
+   "dogrulandi": true
+  },
+  {
    "eslesen": "a74",
    "arka": "#202a1b",
    "no": "#d5dc4a",
@@ -24,14 +48,6 @@
    "no": "#d5dc4a",
    "ust": "#d5dc4a",
    "alt": "#d5dc4a",
-   "dogrulandi": true
-  },
-  {
-   "eslesen": "conecto",
-   "arka": "#050505",
-   "no": "#58f06c",
-   "ust": "#ffd23a",
-   "alt": "#ff9a1a",
    "dogrulandi": true
   },
   {
@@ -52,6 +68,14 @@
   },
   {
    "eslesen": "lion's city",
+   "arka": "#050505",
+   "no": "#ff9a1a",
+   "ust": "#ff9a1a",
+   "alt": "#ff9a1a",
+   "dogrulandi": false
+  },
+  {
+   "eslesen": "conecto",
    "arka": "#050505",
    "no": "#ff9a1a",
    "ust": "#ff9a1a",
