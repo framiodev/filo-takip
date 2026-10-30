@@ -147,6 +147,49 @@ def to_ego_row(r, fl, sira_of):
     }, hat_key(kod, yon)
 
 
+GUN = {"I": "haftaici", "C": "cumartesi", "P": "pazar"}
+
+
+def line_plan(http, kod):
+    """Planlanan sefer saatleri -> [(hat_anahtarı, gün, saat)]"""
+    rows = jrows(soap(http, "plan", "GetPlanlananSeferSaati_json", HatKodu=kod))
+    out = []
+    for r in rows or []:
+        m = re.search(r"(\d{1,2}):(\d{2})", str(r.get("DT") or ""))
+        yon = str(r.get("SYON") or "").strip().upper()[:1]
+        gun = GUN.get(str(r.get("SGUNTIPI") or "").strip().upper()[:1])
+        if m and yon and gun:
+            out.append((hat_key(kod, yon), gun, "%02d:%s" % (int(m.group(1)), m.group(2))))
+    return out
+
+
+def cmd_saatler(args):
+    conn = connect()
+    http = E.Http(args.insecure)
+    kods = sorted({k.rsplit(" ", 1)[0] for (k,) in conn.execute("SELECT hat FROM lines")})
+    if args.limit:
+        kods = kods[: args.limit]
+    n = 0
+    for kod in kods:
+        if STOP.is_set():
+            break
+        plan = line_plan(http, kod)
+        time.sleep(args.delay)
+        if not plan:
+            continue
+        for key in {p[0] for p in plan}:
+            conn.execute("DELETE FROM line_times WHERE hat=?", (key,))
+            conn.execute("INSERT OR REPLACE INTO line_info (hat, kalkis, varis, mesafe, sure, ts) VALUES (?,?,?,?,?,?)",
+                         (key, "", "", "", "", E.now_ts()))
+        conn.executemany("INSERT INTO line_times (hat, gun, yon, saat, nt) VALUES (?,?,0,?,'')", plan)
+        n += 1
+        if n % 25 == 0:
+            conn.commit()
+    conn.commit()
+    print(f"{n} hattın planlanan saatleri kaydedildi.")
+    return 0
+
+
 def cmd_probe(args):
     http = E.Http(args.insecure)
     fl = fleet(http)
@@ -262,6 +305,10 @@ def main(argv=None):
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--delay", type=float, default=0.3)
     p.set_defaults(fn=cmd_init)
+    p = sub.add_parser("saatler", help="planlanan sefer saatlerini çek")
+    p.add_argument("--limit", type=int, default=0)
+    p.add_argument("--delay", type=float, default=0.3)
+    p.set_defaults(fn=cmd_saatler)
     p = sub.add_parser("run")
     p.add_argument("--interval", type=float, default=3, help="tur aralığı (dk)")
     p.add_argument("--delay", type=float, default=0.15)

@@ -34,6 +34,9 @@ class Mock(BaseHTTPRequestHandler):
             res = json.dumps([{"SHATKODU": "500T", "SHATADI": "TUZLA - 4. LEVENT"}, {"SHATKODU": "34", "SHATADI": "AVCILAR"}])
         elif m == "DurakDetay_GYY":
             res = STOPS_XML if "<hat_kodu>500T<" in body else "<NewDataSet xmlns=\"\"/>"
+        elif m == "GetPlanlananSeferSaati_json":
+            res = json.dumps([{"SHATKODU": "500T", "SYON": "G", "SGUNTIPI": "I", "DT": "1900-01-01 06:15:00"},
+                              {"SHATKODU": "500T", "SYON": "D", "SGUNTIPI": "P", "DT": "07:40"}]) if "<HatKodu>500T<" in body else "[]"
         else:
             res = "[]"
         out = (f'<?xml version="1.0"?><soap:Envelope xmlns:soap="x"><soap:Body><{m}Response xmlns="http://tempuri.org/">'
@@ -77,5 +80,8 @@ r = c.execute("SELECT plaka, arac_no, hat, sira, lat FROM sightings").fetchall()
 check("run: kayıt (plaka, kapı no, hat-yön, durak sırası)", r and r[0][:4] == ("34AB123", "C-456", "500T G", 2))
 check("run: stint", c.execute("SELECT COUNT(*) FROM stints WHERE hat='500T G'").fetchone()[0] == 1)
 check("run: son tur meta", json.loads(c.execute("SELECT v FROM meta WHERE k='last_cycle'").fetchone()[0])["fleet"] == 2)
+T.main(["saatler"])
+c = T.connect()
+check("planlanan saatler", sorted(c.execute("SELECT hat, gun, saat FROM line_times").fetchall()) == [("500T D", "pazar", "07:40"), ("500T G", "haftaici", "06:15")])
 print("\nSONUÇ:", "TÜM TESTLER GEÇTİ" if ok else "BAŞARISIZ")
 sys.exit(0 if ok else 1)
