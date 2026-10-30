@@ -22,6 +22,7 @@ import html as htmllib
 import re
 import sys
 import time
+import urllib.parse
 import urllib.request
 
 import ego_tracker as E
@@ -112,6 +113,55 @@ def satirlar(t):
                 yield "> " + ln[ln.index(">") + 1:].strip()
 
 
+RE_IMG = re.compile(r'<img\b[^>]*?\bsrc="([^"]+)"[^>]*>', re.I)
+
+
+def _foto_url(tag_html, src):
+    low = tag_html.lower()
+    if "smilie" in low or "/smilies/" in src.lower() or "avatar" in low or src.startswith("data:"):
+        return ""
+    return urllib.parse.urljoin(BASE, htmllib.unescape(src))
+
+
+def satirlar_foto(t, sayfa_url):
+    """(satır, foto_url, gönderi_url, yazar) üçlüleri. Fotoğraf: açıklamadan önce gelen son görsel
+    (yoksa sonraki ilk görsel). Yalnızca bağlantı saklanır, dosya indirilmez."""
+    parcalar = re.split(r'<div class="post_body', t)
+    for k, blk in enumerate(parcalar[1:], 1):
+        onc = parcalar[k - 1][-4000:]
+        pid = re.findall(r'(?:pid=|id="post_|id="pid_)(\d+)', onc)
+        post = sayfa_url.split("#")[0] + ("#pid%s" % pid[-1] if pid else "")
+        ya = re.findall(r'class="largetext"[^>]*>(?:\s*<a[^>]*>)?\s*([^<]{2,40})', onc)
+        yazar = htmllib.unescape(ya[-1]).strip() if ya else ""
+        sonu = blk.find('<div class="post_foot')
+        body = blk if sonu < 0 else blk[:sonu]
+        body = RE_IMG.sub(lambda m: "\n\x00%s\x00\n" % _foto_url(m.group(0), m.group(1)) if _foto_url(m.group(0), m.group(1)) else "", body)
+        txt = re.sub(r"<br\s*/?>", "\n", body)
+        txt = htmllib.unescape(re.sub(r"<[^>]+>", " ", txt))
+        son = ""
+        bekleyen = []
+        for ln in txt.split("\n"):
+            ln = ln.strip()
+            if ln.startswith("\x00") and ln.endswith("\x00") and len(ln) > 2:
+                son = ln.strip("\x00")
+                for b in bekleyen:
+                    yield b[0], son, post, yazar
+                bekleyen = []
+                continue
+            aday = None
+            if ln.startswith(">"):
+                aday = ln
+            elif ">" in ln and (RE_PLAKA.search(ln) or RE_FILO.search(ln)):
+                aday = "> " + ln[ln.index(">") + 1:].strip()
+            if aday:
+                if son:
+                    yield aday, son, post, yazar
+                else:
+                    bekleyen.append((aday,))
+        for b in bekleyen:
+            yield b[0], "", post, yazar
+
+
 def baslik_model(title):
     low = title.lower()
     for pat, model in BASLIK_MODEL:
@@ -163,6 +213,23 @@ def yaz(conn, filo, plaka, model, url, tid, kuru):
     return n
 
 
+def yaz_foto(conn, filo, plaka, foto, post, yazar, kuru):
+    n = 0
+    if not foto:
+        return 0
+    for anahtar in (filo, plaka):
+        k = E.norm(anahtar)
+        if not k:
+            continue
+        if conn.execute("SELECT 1 FROM arac_foto WHERE anahtar=?", (k,)).fetchone():
+            continue  # ilk bulunan fotoğraf kalır
+        n += 1
+        if not kuru:
+            conn.execute("INSERT INTO arac_foto (anahtar, img, post, yazar, ts) VALUES (?,?,?,?,?)",
+                         (k, foto[:400], post[:300], yazar[:60], E.now_ts()))
+    return n
+
+
 def yaz_dene(fn, bekle=10, deneme=40):
     """Toplayıcı veritabanını kilitliyken (tur sırasında) kısa aralıklarla yeniden dener."""
     import sqlite3
@@ -195,7 +262,8 @@ def main():
     conn.execute("PRAGMA busy_timeout=60000")
     yaz_dene(lambda: conn.execute("CREATE TABLE IF NOT EXISTS arac_bilgi (anahtar TEXT PRIMARY KEY, marka_model TEXT, "
                  "kaynak TEXT, url TEXT, durum TEXT, ts INTEGER)"))
-    toplam_yeni = toplam_satir = 0
+    yaz_dene(lambda: conn.execute("CREATE TABLE IF NOT EXISTS arac_foto (anahtar TEXT PRIMARY KEY, img TEXT, post TEXT, yazar TEXT, ts INTEGER)"))
+    toplam_yeni = toplam_satir = toplam_foto = 0
 
     def zaman_doldu():
         return a.max_minutes and (time.time() - t0) > a.max_minutes * 60
@@ -231,16 +299,17 @@ def main():
             if t is None:
                 break
             kayitlar = []
-            for ln in satirlar(t):
+            for ln, foto, post, yazar in satirlar_foto(t, url):
                 toplam_satir += 1
                 s = ayikla(ln, konu_modeli, satir_modelli)
                 if s:
-                    kayitlar.append(s)
+                    kayitlar.append(s + (foto, post, yazar))
 
             def sayfayi_yaz():
                 n = 0
                 for s in kayitlar:
                     n += yaz(conn, s[0], s[1], s[2], url, tid, a.kuru)
+                    yaz_foto(conn, s[0], s[1], s[3], s[4], s[5], a.kuru)
                 if not a.kuru:
                     conn.execute("INSERT OR REPLACE INTO meta (k, v) VALUES (?,?)", (key, str(p)))
                     conn.commit()

@@ -24,7 +24,7 @@ CSS = """
 @media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#171a21;--ink:#e8eaee;--muted:#9aa3b2;--line:#272c37;
 --ok:#7ddc9b;--okbg:#10291a;--bad:#ff9b9b;--badbg:#341415;--warn:#f1d27a;--warnbg:#2f2610;--chip:#222732}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 Cairo,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 a{color:var(--accent)}
 header{position:sticky;top:0;z-index:2000;background:var(--card);border-bottom:1px solid var(--line)}
 .bar{max-width:1000px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
@@ -135,6 +135,7 @@ select{width:100%;padding:12px 13px;font-size:1rem;border:1px solid var(--line);
 --ok:#5ee08a;--okbg:#10301e;--bad:#ff9b9b;--badbg:#341418;--warn:#f1d27a;--warnbg:#2f2610;--chip:#1a2740;--hh:56px;--rail:78px}
 @media (prefers-color-scheme:light){:root{--bg:#0a111c;--card:#121c2c;--ink:#e8edf5;--muted:#8d9bb2;--line:#22304a;--chip:#1a2740}}
 body{color-scheme:dark}
+button,input,select,textarea{font-family:inherit}
 header{background:#0c1424;border-bottom:1px solid var(--line);height:var(--hh)}
 .bar{max-width:none;height:var(--hh);padding:0 14px;gap:12px;flex-wrap:nowrap}
 .brand{font-size:1rem;white-space:nowrap}
@@ -190,8 +191,13 @@ body.mapmode #frwrap #map{position:absolute;inset:0;height:100%!important;min-he
 .fr-filters .fbox input[type=text],.fr-filters .fbox input:not([type]),.fr-filters .fbox input[type=number],.fr-filters .fbox select{height:38px;padding:0 10px}
 .fr-count{position:absolute;left:12px;bottom:12px;z-index:1400;padding:7px 13px;border-radius:999px;background:rgba(18,28,44,.94);border:1px solid var(--line);font-size:.82rem;color:var(--muted);max-width:calc(100% - 24px)}
 .fr-count b{color:var(--accent)}
-.bm{background:#ffb400;color:#16120a;font:800 11px/18px system-ui,sans-serif;text-align:center;height:20px;min-width:30px;padding:0 6px;border-radius:10px;border:2px solid #0a111c;box-shadow:0 1px 6px rgba(0,0,0,.6);white-space:nowrap}
-.bm.off{background:#5b6b85;color:#dbe3f0}.bm.sel{background:#fff;box-shadow:0 0 0 3px #ffb400,0 2px 10px rgba(0,0,0,.7);transform:scale(1.15)}
+.bz{position:relative;width:30px;height:30px;display:grid;place-items:center}
+.bz svg{display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.75));transition:transform .3s}
+.bz .bb{fill:var(--accent);stroke:#0a111c;stroke-width:1.4}.bz .bw{fill:#0a111c;opacity:.78}
+.bz.off .bb{fill:#5b6b85}.bz.off .bw{opacity:.5}
+.bz.sel .bb{fill:#fff;stroke:var(--accent);stroke-width:2.4}.bz.sel{filter:drop-shadow(0 0 6px var(--accent))}
+.bl{position:absolute;top:100%;left:50%;transform:translate(-50%,-4px);background:var(--accent);color:var(--onacc);font:800 10px/14px Cairo,sans-serif;padding:0 5px;border-radius:7px;border:1.5px solid #0a111c;white-space:nowrap}
+.bz.off .bl{background:#5b6b85;color:#e6ecf5}
 body.mapmode #frwrap #panel{top:12px;right:12px;bottom:12px;background:rgba(18,28,44,.97);backdrop-filter:blur(8px)}
 @media(max-width:700px){body.mapmode #panel{top:auto;left:8px;right:8px;bottom:8px;max-height:56%}.fr-count{bottom:auto;top:56px;left:12px}.fr-filters{top:12px}}
 body.mapmode .fr-count{left:auto;right:12px;bottom:12px}
@@ -223,11 +229,11 @@ DESK_ONLY = {"/raporlar", "/modeller", "/hatlar", "/eslesme"}  # dar ekranda alt
 
 # Şehir kayıt defteri: yeni şehir eklemek için buraya satır ekle ve toplayıcı bağdaştırıcısını yaz.
 CITIES = [
-    {"id": "ankara", "ad": "Ankara", "kurum": "EGO Genel Müdürlüğü", "aktif": True,
+    {"id": "ankara", "ad": "Ankara", "kurum": "EGO Genel Müdürlüğü", "aktif": True, "renk": "#d7182a",
      "kisa": "EGO", "merkez": [39.93, 32.86, 11], "ornek": "09-524 · EGO-22-370 · 06 BT 3809", "kaynak": "EGO canlı servisleri",
      "durak_ornek": "Kızılay veya 10940", "hat_ornek": "481 veya 523-6", "gun_ornek": "590 · Kızılay · Batıkent",
      "durak_not": "EGO durak koordinatı yayınlamadığı için “ne kadar yakın” bilgisi, aracın tahmini varış süresi ve kaç durak kaldığı olarak gösterilir."},
-    {"id": "istanbul", "ad": "İstanbul", "kurum": "İETT · İBB", "aktif": False, "db": "IETT_DB",
+    {"id": "istanbul", "ad": "İstanbul", "kurum": "İETT · İBB", "aktif": False, "renk": "#e2231a", "db": "IETT_DB",
      "kisa": "İETT", "merkez": [41.04, 29.0, 10], "ornek": "C-1234 · 34 TB 1234", "kaynak": "İBB açık veri servisleri",
      "yerles": [("Durak konumları araç verisinden tahmin edilir, EGO koordinat yayınlamaz.", "Durak konumları İBB'nin resmi verisinden gelir."),
                 ("EGO canlı listesinde", "canlı listede"), ("EGO canlı servisi", "Canlı servis"), ("canlı · EGO", "canlı"),
@@ -240,7 +246,7 @@ CITIES = [
                 ("(ör. <b>09-524</b>)", "(ör. <b>C-1234</b>)"), ("ör. <b>09-524</b>", "ör. <b>C-1234</b>")],
      "durak_ornek": "Kadıköy veya 100123", "hat_ornek": "500T veya 15F", "gun_ornek": "500T · Tuzla · Cevizlibağ",
      "durak_not": "Duraklar İBB açık verisinden gelir. İstanbul için canlı yaklaşan araç bilgisi yoktur; geçen araçlar kendi kayıtlarımızdan gösterilir."},
-    {"id": "izmir", "ad": "İzmir", "kurum": "ESHOT · İzmir Büyükşehir", "aktif": False, "db": "IZMIR_DB",
+    {"id": "izmir", "ad": "İzmir", "kurum": "ESHOT · İzmir Büyükşehir", "aktif": False, "renk": "#0b6bb8", "db": "IZMIR_DB",
      "kisa": "ESHOT", "merkez": [38.42, 27.14, 11], "ornek": "2212 · 11848", "kaynak": "İzmir Büyükşehir açık veri servisleri",
      "durak_ornek": "Bahribaba veya 10005", "hat_ornek": "446 veya 5", "gun_ornek": "446 · Üçkuyular · Narlıdere",
      "durak_not": "Duraklar İzmir Büyükşehir açık verisinden gelir. İzmir için canlı yaklaşan araç bilgisi gösterilmez; geçen araçlar kendi kayıtlarımızdan gelir."},
@@ -397,6 +403,13 @@ def make_handler(E):
             html_text = html_text.replace(a, b)
         return html_text
 
+    def brand_css():
+        c = city_meta().get("renk", "#ffb400").lstrip("#")
+        r, g_, b = (int(c[i:i + 2], 16) for i in (0, 2, 4))
+        lum = (0.299 * r + 0.587 * g_ + 0.114 * b) / 255
+        dark = "#%02x%02x%02x" % (int(r * .85), int(g_ * .85), int(b * .85))
+        return (":root{--accent:#%s;--accent2:%s;--onacc:%s}" % (c, dark, "#16120a" if lum > .62 else "#ffffff"))
+
     def layout(active, body, title="EGO Filo Takip", picker=False, mapmode=False):
         if picker:
             nav, chip, status = "", "", ""
@@ -420,7 +433,10 @@ def make_handler(E):
             '<meta name="theme-color" content="#c8102e"><meta name="mobile-web-app-capable" content="yes">'
             '<meta name="apple-mobile-web-app-capable" content="yes"><link rel="manifest" href="/manifest.json">'
             '<link rel="icon" href="/icon.svg" type="image/svg+xml">'
-            f"<title>{esc(title.replace('EGO Filo Takip', city_meta()['kisa'] + ' Filo Takip'))}</title><style>{CSS}</style></head><body{' class=\"mapmode\"' if mapmode else ''}>"
+            f"<title>{esc(title.replace('EGO Filo Takip', city_meta()['kisa'] + ' Filo Takip'))}</title>"
+            '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+            '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap&subset=latin-ext">'
+            f"<style>{CSS}{brand_css()}</style></head><body{' class=\"mapmode\"' if mapmode else ''}>"
             '<header><div class="bar"><a class="brand" href="/"><span class="logo">🚌</span>Filo Takip</a>'
             f"{hs}{chip}<nav>{nav}</nav>{status}</div></header><main>{body}</main>"
             "<footer>Resmi olmayan, ticari amaç gütmeyen kişisel arşiv. Veri: " + city_meta()["kaynak"] + ". "
@@ -1497,8 +1513,23 @@ document.querySelectorAll('.vmap').forEach(function(el){
                 "SELECT plaka, arac_no, hat, lat, lng, hiz, sira, MAX(COALESCE(kts, ts)) FROM sightings "
                 "WHERE ts>=? AND lat IS NOT NULL AND lng IS NOT NULL AND lat<>0 GROUP BY plaka", (since,)).fetchall()
             route = {(h, sr): ad for h, sr, ad in conn.execute("SELECT hat, sira, ad FROM line_route")}
+            recent = conn.execute(
+                "SELECT plaka, lat, lng FROM (SELECT plaka, lat, lng, ROW_NUMBER() OVER (PARTITION BY plaka ORDER BY ts DESC) rn "
+                "FROM sightings WHERE ts>=? AND lat IS NOT NULL AND lat<>0) WHERE rn<=8 ORDER BY plaka, rn",
+                (E.now_ts() - 1800,)).fetchall()
         finally:
             conn.close()
+        yon = {}
+        pts = {}
+        for pl_, la_, lo_ in recent:
+            pts.setdefault(pl_, []).append((la_, lo_))
+        for pl_, ps in pts.items():
+            la0, lo0 = ps[0]
+            for la1, lo1 in ps[1:]:
+                dy, dx = (la0 - la1) * 111320, (lo0 - lo1) * 111320 * math.cos(math.radians(la0))
+                if dx * dx + dy * dy > 35 * 35:  # en az ~35 m hareket
+                    yon[pl_] = int((math.degrees(math.atan2(dx, dy)) + 360) % 360)
+                    break
         now = E.now_ts()
         mdb, tips = _db_models(), _tips()
         out = []
@@ -1506,8 +1537,24 @@ document.querySelectorAll('.vmap').forEach(function(el){
             out.append({"p": E.pretty_plate(plaka), "f": arac or "", "h": hat, "la": lat, "lo": lng,
                         "v": hiz, "d": route.get((hat, sira), "") if sira is not None else "",
                         "t": fmt(t, True), "age": int((now - t) / 60), "m": model_for(arac, plaka, mdb)[0],
-                        "tp": _tip_of(tips, arac, plaka)})
+                        "tp": _tip_of(tips, arac, plaka), "yn": yon.get(plaka)})
         return json.dumps({"n": len(out), "araclar": out}, ensure_ascii=False)
+
+    def api_foto(g):
+        conn = E.connect()
+        try:
+            for k in (E.norm(g("f")), E.norm(g("p"))):
+                if not k:
+                    continue
+                try:
+                    r = conn.execute("SELECT img, post, yazar FROM arac_foto WHERE anahtar=?", (k,)).fetchone()
+                except Exception:
+                    r = None
+                if r:
+                    return json.dumps({"img": r[0], "post": r[1], "yazar": r[2]}, ensure_ascii=False)
+        finally:
+            conn.close()
+        return json.dumps({})
 
     def api_arac_iz(g):
         """Seçili aracın bugünkü seferleri ve iz noktaları (harita yan paneli için)."""
@@ -1631,6 +1678,8 @@ if(!layer.addLayers){layer.addLayers=function(a){a.forEach(function(x){layer.add
 function $(i){return document.getElementById(i);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
 function op(a){return String(a.p||'').replace(/\\s/g,'').toUpperCase().indexOf('06HO')===0?'oho':'ego';}
+var BUS_SVG='<svg viewBox="0 0 20 38" style="width:calc(__S__ * 20px);height:calc(__S__ * 38px);transform:rotate(__R__deg)"><rect class="bb" x="2" y="1" width="16" height="36" rx="5"/><rect class="bw" x="4.5" y="3.5" width="11" height="6" rx="2"/><rect class="bw" x="4.5" y="12" width="11" height="3"/><rect class="bw" x="4.5" y="17" width="11" height="3"/><rect class="bw" x="4.5" y="22" width="11" height="3"/><rect class="bw" x="4.5" y="29" width="11" height="4" rx="1.5"/></svg>';
+function zc(z){return z<11?0:z<13?1:z<14?2:3;}var lastZ=-1;
 var panel=$('panel'),trail=L.layerGroup().addTo(map),selM=null,selA=null,tcols=['#c8102e','#1d4ed8','#15803d','#b45309','#7c3aed','#0e7490'];
 function bearing(a,b){var r=Math.PI/180,y=Math.sin((b[1]-a[1])*r)*Math.cos(b[0]*r),x=Math.cos(a[0]*r)*Math.sin(b[0]*r)-Math.sin(a[0]*r)*Math.cos(b[0]*r)*Math.cos((b[1]-a[1])*r);return (Math.atan2(y,x)/r+360)%360;}
 function statusOf(a){return a.age<=15?'<span class="fr-live">● canlı</span>':'<span class="fr-off">● '+(a.age<120?a.age+' dk önce':'son bilinen konum')+'</span>';}
@@ -1660,9 +1709,15 @@ function openPanel(a,m){
  if(selM&&selA&&selM!==m)styleOf(selM,selA,false);
  selM=m;selA=a;styleOf(m,a,true);m.bringToFront&&m.bringToFront();
  panel.style.display='block';
- panel.innerHTML='<button class="fr-x" aria-label="Kapat">×</button><div class="fr-head">'+head(a)+'</div><div class="fr-btns"><button class="fr-rf">Anlık yenile</button><a href="/?q='+encodeURIComponent(a.f||a.p)+'">Tüm sorgu sayfası →</a><span class="fr-rfs"></span></div><div class="fr-tabs"></div><div class="fr-tr muted">Seferler yükleniyor…</div>';
+ panel.innerHTML='<button class="fr-x" aria-label="Kapat">×</button><div class="fr-head">'+head(a)+'</div><div class="fr-photo"><div class="none">Fotoğraf aranıyor…</div></div><div class="fr-btns"><button class="fr-rf">Anlık yenile</button><a href="/?q='+encodeURIComponent(a.f||a.p)+'">Tüm sorgu sayfası →</a><span class="fr-rfs"></span></div><div class="fr-tabs"></div><div class="fr-tr muted">Seferler yükleniyor…</div>';
  panel.querySelector('.fr-x').onclick=closePanel;
  panel.querySelector('.fr-rf').onclick=function(){refreshLive(a,m);};
+ fetch('/api/foto?f='+encodeURIComponent(a.f||'')+'&p='+encodeURIComponent(a.p)).then(function(r){return r.json()}).then(function(j){
+  if(selA!==a)return;var bx=panel.querySelector('.fr-photo');if(!bx)return;
+  if(!j.img){bx.innerHTML='<div class="none">Bu araç için forumda fotoğraf bulunamadı.</div>';return;}
+  bx.innerHTML='<img referrerpolicy="no-referrer" loading="lazy" alt="'+esc(a.p)+'" src="'+esc(j.img)+'"><div class="cr">© '+esc(j.yazar||'forum üyesi')+' · <a target="_blank" rel="noopener" href="'+esc(j.post)+'">forumda gör</a></div>';
+  bx.querySelector('img').onerror=function(){bx.innerHTML='<div class="none">Fotoğraf yüklenemedi.</div>';};
+ }).catch(function(){});
  fetch('/api/arac_iz?q='+encodeURIComponent(a.p)).then(function(r){return r.json()}).then(function(j){
   if(selA!==a)return;
   var tr=j.seferler||[],box=panel.querySelector('.fr-tr'),tabs=panel.querySelector('.fr-tabs');
@@ -1696,7 +1751,7 @@ function refreshLive(a,m){
 }
 function draw(){
  var q=$('q').value.trim().toLowerCase(),hat=$('hat').value.trim().toLowerCase(),o=$('op').value,tp=$('tip').value;
- var onlyLive=$('live').checked,lbl=map.getZoom()>=13;lastLbl=lbl;
+ var onlyLive=$('live').checked,zl=map.getZoom();lastZ=zc(zl);
  layer.clearLayers();var shown=0,live=0,b=[],ms=[];
  data.forEach(function(a){
   var txt=(a.f+' '+a.p+' '+a.h+' '+(a.m||'')).toLowerCase();
@@ -1706,10 +1761,10 @@ function draw(){
   if(tp&&(a.tp||'')!==tp)return;
   var isLive=a.age<=15; if(onlyLive&&!isLive)return;
   shown++; if(isLive)live++;
-  var m;
-  if(lbl){var isSel=!!(selA&&a.p===selA.p);m=L.marker([a.la,a.lo],{icon:L.divIcon({className:'',html:'<div class="bm'+(isLive?'':' off')+(isSel?' sel':'')+'">'+esc(a.h)+'</div>',iconSize:[34,20],iconAnchor:[17,10]})});
-   m.setStyle=function(st){var e=m.getElement&&m.getElement();if(e&&e.firstChild)e.firstChild.classList.toggle('sel',st.radius===10);return m;};}
-  else m=L.circleMarker([a.la,a.lo],{radius:isLive?7:5,color:isLive?'#000':'#2b3850',fillColor:isLive?'#ffb400':'#5b6b85',fillOpacity:isLive?.95:.7,weight:1});
+  var isSel=!!(selA&&a.p===selA.p),sc=zl<11?.55:zl<13?.75:1,m;
+  m=L.marker([a.la,a.lo],{icon:L.divIcon({className:'',iconSize:[30,30],iconAnchor:[15,15],
+   html:'<div class="bz'+(isLive?'':' off')+(isSel?' sel':'')+'">'+BUS_SVG.replace('__R__',a.yn==null?0:a.yn).replace('__S__',sc)+(zl>=14?'<span class="bl">'+esc(a.h)+'</span>':'')+'</div>'})});
+  m.setStyle=function(st){var e=m.getElement&&m.getElement();if(e&&e.firstChild)e.firstChild.classList.toggle('sel',st.radius===10);return m;};
   m.on('click',function(){openPanel(a,m);});
   if(selA&&a.p===selA.p){selM=m;selA=a;styleOf(m,a,true);}
   ms.push(m); b.push([a.la,a.lo]);
@@ -1719,7 +1774,7 @@ function draw(){
  if(selA&&panel.style.display==='block'){var hd=panel.querySelector('.fr-head');if(hd)hd.innerHTML=head(selA);}
  if((q||hat)&&b.length&&b.length<=30)map.fitBounds(b,{maxZoom:15,padding:[40,40]});
 }
-var lastLbl=false;map.on('zoomend',function(){if((map.getZoom()>=13)!==lastLbl&&data.length)draw();});
+map.on('zoomend',function(){if(zc(map.getZoom())!==lastZ&&data.length)draw();});
 var stopLayer=L.layerGroup().addTo(map),stopKey='';
 function loadStops(){
  if(map.getZoom()<15){stopLayer.clearLayers();stopKey='';return;}
@@ -1768,14 +1823,19 @@ load();loadStops();setInterval(load,60000);
 .fr-kv{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
 .fr-kv div{background:var(--bg);border-radius:10px;padding:8px;text-align:center}
 .fr-kv b{display:block;font-size:.95rem}.fr-kv i{display:block;font-style:normal;font-size:.72rem;opacity:.65;margin-top:2px}
+.fr-photo{margin:10px -14px 0;position:relative;background:#0a111c;min-height:96px}
+.fr-photo img{display:block;width:100%;max-height:190px;object-fit:cover}
+.fr-photo .cr{font-size:.72rem;padding:5px 12px;background:rgba(0,0,0,.55);color:#fff;position:absolute;left:0;right:0;bottom:0}
+.fr-photo .cr a{color:var(--accent)}
+.fr-photo .none{display:grid;place-items:center;height:96px;color:var(--muted);font-size:.78rem;text-align:center;padding:8px}
 .fr-live{color:#22c55e}.fr-off{color:#9ca3af}
 .fr-line{font-size:.88rem;margin:4px 0}
 .fr-btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
 .fr-btns button{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:.85rem;cursor:pointer}
 .fr-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
 .fr-tabs button{padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:.8rem;cursor:pointer}
-.fr-tabs button.on{background:#c8102e;border-color:#c8102e;color:#fff}
-.fr-arrow div{color:#c8102e;font-size:20px;text-align:center;text-shadow:0 0 3px #fff}
+.fr-tabs button.on{background:var(--accent);border-color:var(--accent);color:var(--onacc)}
+.fr-arrow div{color:var(--accent);font-size:20px;text-align:center;text-shadow:0 0 3px #fff}
 </style>"""
 
     def page_harita(g):
@@ -1960,6 +2020,8 @@ load();loadStops();setInterval(load,60000);
                     return self._send(page_modeller(g, "Kaydedildi." if g("ok") else ""))
                 if u.path == "/eslesme":
                     return self._send(page_eslesme(g, {"1": "Kaydedildi.", "0": "Parola yanlış ya da kayıt kapalı."}.get(g("ok"), "")))
+                if u.path == "/api/foto":
+                    return self._send(api_foto(g), "application/json; charset=utf-8")
                 if u.path == "/harita":
                     return self._send(page_harita(g))
                 if u.path == "/api/canli":
