@@ -421,13 +421,20 @@ document.querySelectorAll('.vmap').forEach(function(el){
  var g=JSON.parse(el.getAttribute('data-geo')),map=L.map(el,{preferCanvas:true});
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
  var all=[],last=null,lastHat=g.h||'';
+ var prev=L.layerGroup().addTo(map),nt=g.trips.length;
  g.trips.forEach(function(t,i){
-  var c=cols[i%cols.length],ll=t.p.map(function(x){return [x[0],x[1]];});all=all.concat(ll);
-  L.polyline(ll,{color:c,weight:4,opacity:.75}).addTo(map).bindTooltip('Sefer '+(i+1)+' · Hat '+esc(t.h));
-  t.p.forEach(function(x){L.circleMarker([x[0],x[1]],{radius:3,color:c,weight:1,fillColor:c,fillOpacity:.9}).addTo(map).bindTooltip(esc(x[2])+' · Hat '+esc(t.h));});
-  L.circleMarker(ll[0],{radius:6,color:'#fff',weight:2,fillColor:c,fillOpacity:1}).addTo(map).bindTooltip('Sefer '+(i+1)+' başlangıç '+esc(t.p[0][2]));
+  var isLast=(i===nt-1),c=cols[i%cols.length],ll=t.p.map(function(x){return [x[0],x[1]];});all=all.concat(ll);
+  var grp=isLast?map:prev;
+  if(isLast){
+   L.polyline(ll,{color:c,weight:4,opacity:.85}).addTo(grp).bindTooltip('Sefer '+(i+1)+' · Hat '+esc(t.h));
+   t.p.forEach(function(x){L.circleMarker([x[0],x[1]],{radius:3,color:c,weight:1,fillColor:c,fillOpacity:.9}).addTo(grp).bindTooltip(esc(x[2])+' · Hat '+esc(t.h));});
+  }else{
+   L.polyline(ll,{color:c,weight:2,opacity:.35,dashArray:'4 6'}).addTo(grp).bindTooltip('Sefer '+(i+1)+' · Hat '+esc(t.h));
+  }
+  L.circleMarker(ll[0],{radius:isLast?6:4,color:'#fff',weight:2,fillColor:c,fillOpacity:1}).addTo(grp).bindTooltip('Sefer '+(i+1)+' başlangıç '+esc(t.p[0][2])+' · Hat '+esc(t.h));
   last=t.p[t.p.length-1];lastHat=t.h;
  });
+ if(nt>1){L.control.layers(null,{'Önceki seferler':prev},{collapsed:false,position:'topright'}).addTo(map);}
  var label='';
  if(last){label='Son konum '+last[2]+(g.bugun&&ago(last[3])?' ('+ago(last[3])+')':'');}
  else if(g.son){last=[g.son.la,g.son.lo,g.son.t,g.son.e];lastHat=g.son.h;all.push([g.son.la,g.son.lo]);label='Son bilinen konum '+g.son.t+' · Hat '+g.son.h;}
