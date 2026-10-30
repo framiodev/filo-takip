@@ -36,3 +36,6 @@ Ankara EGO otobüslerinin hangi hatta, hangi saatte ve hangi duraklardan geçti�
 
 ## İstanbul (İETT) – hazırlık aşaması
 `iett_tracker.py`: İBB açık veri servislerinden (kimlik gerekmez) hat, koordinatlı durak ve canlı araç konumu toplar; Ankara ile aynı şemada ayrı veritabanına (`iett_filo.db`) yazar. `python3 iett_tracker.py probe` → servisleri dener, `init` → 782 hattın duraklarını çeker, `run` → döngü. Henüz sunucuda servis olarak çalışmıyor ve arayüze bağlı değil. Test: `python3 test_iett.py`.
+
+### Durak konumları (Ankara)
+EGO durak koordinatı yayınlamaz. `ego_tracker.py durak-konum` (ve toplayıcı içinde 3 saatte bir) araç gözlemlerinden durak konumunu tahmin eder: aracın "sonraki durak" sırası değiştiği iki ardışık gözlemin orta noktasının medyanı (en az 3 geçiş). Veri biriktikçe doğruluk artar. Durak adresleri (mahalle/sokak) EGO Hareket Saatleri sayfasından alınır. Haritada 15+ yakınlaştırmada duraklar tıklanabilir.

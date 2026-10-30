@@ -372,6 +372,26 @@ check("otomatik yenileme işaretleri", 'data-live="30"' in _get("/durak?no=10940
 check("api/canli: önceki durak ve doluluk alanları", '"dl"' in _get("/api/canli?hat=481"))
 check("sorgu bugün: vnow + otomatik yenileme", True)
 
+_c = E.connect()
+check("durak adresi kaydedildi", _c.execute("SELECT COUNT(*) FROM stop_info WHERE adres='ADRES'").fetchone()[0] >= 1)
+# durak konumu tahmini: sentetik geçişler (481 hattı, sıra 3 -> 4, orta nokta 39.5/32.5)
+_dur3 = _c.execute("SELECT durak FROM line_route WHERE hat='481' AND sira=3").fetchone()[0]
+for _i in range(4):
+    _t = 1900000000 + _i * 1000
+    for _k, (_s, _la) in enumerate(((3, 39.499), (4, 39.501))):
+        _c.execute("INSERT INTO sightings (ts, plaka, arac_no, hat, lat, lng, hiz, sira) VALUES (?,?,?,?,?,?,?,?)",
+                   (_t + _k * 60, "99ZZ%d" % _i, "99-%d" % _i, "481", _la, 32.5, 10, _s))
+_c.commit(); _c.close()
+check("durak konumu hesaplandı", E.infer_stop_positions(min_n=3) >= 1)
+_c = E.connect()
+_p = _c.execute("SELECT lat, lng, n FROM stop_pos WHERE durak=?", (_dur3,)).fetchone()
+check("durak konumu orta noktaya yakın", _p and abs(_p[0] - 39.5) < 0.001 and _p[2] >= 4)
+_c.close()
+_ap = _j.loads(_get("/api/duraklar?s=39.4&w=32.4&n=39.6&e=32.6"))["duraklar"]
+check("api/duraklar bbox", any(x["d"] == _dur3 and abs(x["la"] - 39.5) < 0.001 and x["ad"] for x in _ap))
+check("api/duraklar bbox dışı boş", _j.loads(_get("/api/duraklar?s=10&w=10&n=11&e=11"))["duraklar"] == [])
+check("harita: durak katmanı", "/api/duraklar" in _get("/harita"))
+
 # hepsi: tek komutla toplayıcı + arayüz (mevcut DB hazır olduğu için init atlanır)
 import socket
 s = socket.socket(); s.bind(("127.0.0.1", 0)); hp = s.getsockname()[1]; s.close()

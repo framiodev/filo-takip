@@ -1195,6 +1195,26 @@ document.querySelectorAll('.vmap').forEach(function(el){
                         "t": fmt(kts, True), "age": max(0, int((now - kts) / 60)), "m": model_for(E.sv(r, "arac_no"), E.sv(r, "plaka_no"))[0]})
         return json.dumps({"araclar": out}, ensure_ascii=False)
 
+    def api_duraklar(g):
+        try:
+            s_, w_, n_, e_ = (float(g(k)) for k in ("s", "w", "n", "e"))
+        except ValueError:
+            return json.dumps({"duraklar": []})
+        conn = E.connect()
+        try:
+            rows = conn.execute(
+                "SELECT p.durak, p.lat, p.lng, p.n, (SELECT ad FROM line_route r WHERE r.durak=p.durak AND r.ad<>'' LIMIT 1), "
+                "(SELECT adres FROM stop_info i WHERE i.durak=p.durak) FROM stop_pos p "
+                "WHERE p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ? LIMIT 400", (s_, n_, w_, e_)).fetchall()
+            out = []
+            for d, la, lo, n, ad, adres in rows:
+                hats = [r[0] for r in conn.execute("SELECT hat FROM line_stops WHERE durak=? LIMIT 40", (d,))]
+                out.append({"d": d, "la": round(la, 5), "lo": round(lo, 5), "n": n, "ad": ad or "", "adres": adres or "",
+                            "h": sorted(hats, key=natural_key)})
+        finally:
+            conn.close()
+        return json.dumps({"duraklar": out}, ensure_ascii=False)
+
     MAP_JS = """
 (function(){
 var map=L.map('map',{preferCanvas:true}).setView([39.93,32.86],11);
@@ -1242,6 +1262,22 @@ function draw(){
  $('cnt').textContent=shown+' araç gösteriliyor, '+live+' tanesi canlı (son 15 dk)';
  if((q||hat)&&b.length&&b.length<=30)map.fitBounds(b,{maxZoom:15,padding:[40,40]});
 }
+var stopLayer=L.layerGroup().addTo(map),stopKey='';
+function loadStops(){
+ if(map.getZoom()<15){stopLayer.clearLayers();stopKey='';return;}
+ var b=map.getBounds(),k=[b.getSouth(),b.getWest(),b.getNorth(),b.getEast()].map(function(x){return x.toFixed(3);}).join(',');
+ if(k===stopKey)return;stopKey=k;
+ fetch('/api/duraklar?s='+b.getSouth()+'&w='+b.getWest()+'&n='+b.getNorth()+'&e='+b.getEast()).then(function(r){return r.json()}).then(function(j){
+  stopLayer.clearLayers();
+  (j.duraklar||[]).forEach(function(s){
+   var m=L.circleMarker([s.la,s.lo],{radius:7,color:'#fff',weight:2,fillColor:'#1d4ed8',fillOpacity:.95,pane:'markerPane'});
+   var hl=s.h.map(function(h){return '<a href="/hat?no='+encodeURIComponent(h)+'">'+esc(h)+'</a>';}).join(' · ');
+   m.bindPopup('<b>'+esc(s.ad||'Durak')+'</b> &middot; '+esc(s.d)+(s.adres?'<br>'+esc(s.adres):'')+'<br>Hatlar: '+(hl||'-')+'<br><a href="/durak?no='+encodeURIComponent(s.d)+'">Yaklaşan araçlar</a><br><span style="opacity:.7;font-size:.8em">Konum araç verisinden tahminidir ('+s.n+' geçiş)</span>');
+   m.addTo(stopLayer);
+  });
+ }).catch(function(){});
+}
+map.on('moveend',loadStops);
 function load(){
  fetch('/api/araclar?saat='+$('saat').value).then(function(r){return r.json()}).then(function(j){data=j.araclar;draw();}).catch(function(){$('cnt').textContent='Veri alınamadı';});
 }
@@ -1249,7 +1285,7 @@ function load(){
 ['op','tip','live'].forEach(function(i){$(i).addEventListener('change',draw);});
 $('saat').addEventListener('change',load);
 var u=new URLSearchParams(location.search);if(u.get('q'))$('q').value=u.get('q');if(u.get('hat'))$('hat').value=u.get('hat');
-load();setInterval(load,60000);
+load();loadStops();setInterval(load,60000);
 })();
 """
 
@@ -1268,7 +1304,7 @@ load();setInterval(load,60000);
             '<div class="muted" id="cnt" style="margin:6px 2px 10px">Yükleniyor…</div>'
             '<div id="map" style="height:68vh;isolation:isolate;min-height:360px;border-radius:16px;border:1px solid var(--line)"></div>'
             '<p class="muted">Yeşil: son 15 dakikada görüldü. Gri: çalışmıyor veya veri yok, son bilinen konum. Kalabalık bölgelerde araçlar '
-            'sayıyla gruplanır; yaklaştıkça tek tek görünür. Veri taramalar arasında güncellenir (yaklaşık 1-5 dk).</p>'
+            'sayıyla gruplanır; yaklaştıkça tek tek görünür. Veri taramalar arasında güncellenir (yaklaşık 1-5 dk). Yakınlaştırınca (15+) mavi duraklar görünür; tıklayınca hatlar ve adres açılır. Durak konumları araç verisinden tahmin edilir, EGO koordinat yayınlamaz.</p>'
             '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">'
             '<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">'
             '<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">'
@@ -1430,6 +1466,8 @@ load();setInterval(load,60000);
                     return self._send(page_harita(g))
                 if u.path == "/api/canli":
                     return self._send(api_canli(g), "application/json; charset=utf-8")
+                if u.path == "/api/duraklar":
+                    return self._send(api_duraklar(g), "application/json; charset=utf-8")
                 if u.path == "/api/araclar":
                     return self._send(api_araclar(g), "application/json; charset=utf-8")
                 if u.path == "/gun":

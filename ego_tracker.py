@@ -292,6 +292,10 @@ CREATE TABLE IF NOT EXISTS line_route (
 CREATE TABLE IF NOT EXISTS aliases (alias TEXT PRIMARY KEY, plaka TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS arac_tip (anahtar TEXT PRIMARY KEY, tip TEXT, detay TEXT, ts INTEGER);
+CREATE TABLE IF NOT EXISTS stop_info (durak TEXT PRIMARY KEY, adres TEXT);
+CREATE TABLE IF NOT EXISTS stop_pos (durak TEXT PRIMARY KEY, lat REAL, lng REAL, n INTEGER, ts INTEGER);
+CREATE INDEX IF NOT EXISTS ix_stop_pos_lat ON stop_pos (lat);
+CREATE INDEX IF NOT EXISTS ix_line_stops_durak ON line_stops (durak);
 CREATE TABLE IF NOT EXISTS line_info (hat TEXT PRIMARY KEY, kalkis TEXT, varis TEXT, mesafe TEXT, sure TEXT, ts INTEGER);
 CREATE TABLE IF NOT EXISTS line_times (hat TEXT NOT NULL, gun TEXT NOT NULL, yon INTEGER NOT NULL DEFAULT 0, saat TEXT NOT NULL, nt TEXT);
 CREATE INDEX IF NOT EXISTS ix_line_times ON line_times (hat, gun);
@@ -487,6 +491,16 @@ def _cells(tr):
     return [html.unescape(re.sub(r"<[^>]+>", " ", c)).strip() for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", tr, re.S | re.I)]
 
 
+def parse_stop_addresses(body):
+    """Durak tablosundan {durak_no: adres} (sıra | durak no | ad | adres)."""
+    out = {}
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", body, re.S | re.I):
+        c = _cells(tr)
+        if len(c) >= 4 and c[0].isdigit() and re.fullmatch(r"\d{4,6}", c[1]) and c[3]:
+            out[c[1]] = re.sub(r"\s+", " ", c[3])[:160]
+    return out
+
+
 def parse_line_page(body):
     """HareketSaatleri HTML -> {'info': {...}, 'times': [(gun, yon, saat, not)], 'stops': [...]}"""
     info = {}
@@ -519,7 +533,7 @@ def parse_line_page(body):
                     if mm:
                         note = re.sub(r"^-$", "", mm.group(3).strip())
                         times.append((gun, 0, "%02d:%s" % (int(mm.group(1)), mm.group(2)), note[:60]))
-    return {"info": info, "times": times, "stops": fetch_stops_from_html(body)}
+    return {"info": info, "times": times, "stops": fetch_stops_from_html(body), "adres": parse_stop_addresses(body)}
 
 
 def fetch_stops_from_html(body):
@@ -549,6 +563,7 @@ def save_line_page(conn, hat, page):
         return ""
     conn.execute("INSERT OR REPLACE INTO line_info (hat, kalkis, varis, mesafe, sure, ts) VALUES (?,?,?,?,?,?)",
                  (hat, pick("kalkış", "kalkis"), pick("varış", "varis"), pick("mesafe"), pick("süre", "sure"), now_ts()))
+    conn.executemany("INSERT OR REPLACE INTO stop_info (durak, adres) VALUES (?,?)", list(page.get("adres", {}).items()))
     conn.execute("DELETE FROM line_times WHERE hat=?", (hat,))
     conn.executemany("INSERT INTO line_times (hat, gun, yon, saat, nt) VALUES (?,?,?,?,?)",
                      [(hat, g, y, t, n) for g, y, t, n in page["times"]])
@@ -582,13 +597,49 @@ def refresh_timetables(http, max_age_days=7, delay=1.5, limit=0):
         conn.close()
 
 
+def infer_stop_positions(conn_factory=None, min_n=3, max_gap=150):
+    """Araç gözlemlerinden durak konumu tahmini.
+
+    Bir aracın 'sonraki durak sırası' s'den s+1'e geçtiği iki ardışık gözlem arasında araç s. durağı geçmiştir;
+    iki gözlemin orta noktası durağa yakındır. Çok sayıda geçişin ortancası (medyan) birkaç on metre doğruluğa yaklaşır."""
+    conn = conn_factory() if conn_factory else connect()
+    try:
+        durak_of = {(h, sr): d for h, sr, d in conn.execute("SELECT hat, sira, durak FROM line_route")}
+        prev, pts = {}, {}
+        for ts, plaka, hat, lat, lng, sira in conn.execute(
+                "SELECT ts, plaka, hat, lat, lng, sira FROM sightings WHERE sira IS NOT NULL AND lat IS NOT NULL "
+                "AND lat<>0 ORDER BY plaka, hat, ts"):
+            k = (plaka, hat)
+            p = prev.get(k)
+            if p and sira == p[1] + 1 and 0 < ts - p[0] <= max_gap:
+                d = durak_of.get((hat, p[1]))
+                if d:
+                    pts.setdefault(d, []).append(((lat + p[2]) / 2, (lng + p[3]) / 2))
+            prev[k] = (ts, sira, lat, lng)
+        rows = []
+        for d, lst in pts.items():
+            if len(lst) >= min_n:
+                la = sorted(x[0] for x in lst)[len(lst) // 2]
+                lo = sorted(x[1] for x in lst)[len(lst) // 2]
+                rows.append((d, la, lo, len(lst), now_ts()))
+        conn.executemany("INSERT OR REPLACE INTO stop_pos (durak, lat, lng, n, ts) VALUES (?,?,?,?,?)", rows)
+        conn.commit()
+        return len(rows)
+    finally:
+        conn.close()
+
+
 def timetable_worker(http, delay=1.5):
     while not STOP.is_set():
         try:
             refresh_timetables(http, delay=delay)
         except Exception:
             pass
-        STOP.wait(6 * 3600)
+        try:
+            infer_stop_positions()
+        except Exception:
+            pass
+        STOP.wait(3 * 3600)
 
 
 def init_from_schedules(conn, http, catalog, args):
@@ -1294,6 +1345,10 @@ def main(argv=None):
                    help="saatler: her hattın Hareket Saatleri sayfasından (hızlı, varsayılan); "
                         "durak: tüm durakları Otobusler servisiyle tarar (yavaş, yedek yöntem)")
     p.set_defaults(fn=cmd_init)
+
+    p = sub.add_parser("durak-konum", help="araç gözlemlerinden durak konumlarını hesapla")
+    p.add_argument("--min", type=int, default=3)
+    p.set_defaults(fn=lambda a: print("Konumu hesaplanan durak:", infer_stop_positions(min_n=a.min)) or 0)
 
     p = sub.add_parser("saatler", help="hat bilgisi ve hareket saatlerini çek/tazele")
     p.add_argument("--gun", type=float, default=7, help="bu günden eski kayıtları tazele")
