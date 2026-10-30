@@ -153,8 +153,10 @@ DESK_ONLY = {"/raporlar", "/modeller", "/hatlar"}  # dar ekranda alt çubuktan g
 
 # Şehir kayıt defteri: yeni şehir eklemek için buraya satır ekle ve toplayıcı bağdaştırıcısını yaz.
 CITIES = [
-    {"id": "ankara", "ad": "Ankara", "kurum": "EGO Genel Müdürlüğü", "aktif": True},
-    {"id": "istanbul", "ad": "İstanbul", "kurum": "İETT · İBB", "aktif": False, "db": "IETT_DB"},
+    {"id": "ankara", "ad": "Ankara", "kurum": "EGO Genel Müdürlüğü", "aktif": True,
+     "kisa": "EGO", "merkez": [39.93, 32.86, 11], "ornek": "09-524 · EGO-22-370 · 06 BT 3809", "kaynak": "EGO canlı servisleri"},
+    {"id": "istanbul", "ad": "İstanbul", "kurum": "İETT · İBB", "aktif": False, "db": "IETT_DB",
+     "kisa": "İETT", "merkez": [41.04, 29.0, 10], "ornek": "C-1234 · 34 TB 1234", "kaynak": "İBB açık veri servisleri"},
     {"id": "izmir", "ad": "İzmir", "kurum": "ESHOT · İzmir Büyükşehir", "aktif": False},
 ]
 CITY_BY_ID = {c["id"]: c for c in CITIES}
@@ -186,6 +188,9 @@ def make_handler(E):
 
     IST_DB = os.environ.get("IETT_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "iett_filo.db"))
     CITY_BY_ID["istanbul"]["aktif"] = os.path.exists(IST_DB)
+
+    def city_meta():
+        return CITY_BY_ID.get(cur_city(), CITY_BY_ID["ankara"])
 
     def cur_city():
         return getattr(E.CITY_CTX, "city", "ankara")
@@ -290,10 +295,10 @@ def make_handler(E):
             '<meta name="theme-color" content="#c8102e"><meta name="mobile-web-app-capable" content="yes">'
             '<meta name="apple-mobile-web-app-capable" content="yes"><link rel="manifest" href="/manifest.json">'
             '<link rel="icon" href="/icon.svg" type="image/svg+xml">'
-            f"<title>{esc(title)}</title><style>{CSS}</style></head><body>"
+            f"<title>{esc(title.replace('EGO Filo Takip', city_meta()['kisa'] + ' Filo Takip'))}</title><style>{CSS}</style></head><body>"
             '<header><div class="bar"><a class="brand" href="/"><span class="logo">🚌</span>Filo Takip</a>'
             f"{chip}<nav>{nav}</nav>{status}</div></header><main>{body}</main>"
-            "<footer>Resmi olmayan, ticari amaç gütmeyen kişisel arşiv. Veri: EGO canlı servisleri. "
+            "<footer>Resmi olmayan, ticari amaç gütmeyen kişisel arşiv. Veri: " + city_meta()["kaynak"] + ". "
             "Durak saatleri gözlemler arası ara değerle tahmin edilir.</footer>" + SOFT_REFRESH + "</body></html>"
         )
 
@@ -302,7 +307,7 @@ def make_handler(E):
         return (
             '<form class="card form" method="get" action="/">'
             '<div class="field grow"><label>Filo kodu veya plaka</label>'
-            f'<input name="q" value="{esc(q, True)}" placeholder="09-524 · EGO-22-370 · 06 BT 3809" required autofocus autocomplete="off"></div>'
+            f'<input name="q" value="{esc(q, True)}" placeholder="{esc(city_meta()["ornek"], True)}" required autofocus autocomplete="off"></div>'
             f'<div class="field"><label>Tarih</label><input type="date" name="tarih" value="{esc(tarih, True)}"></div>'
             f'<div class="field"><label>Saat (boşsa tüm gün)</label><input type="time" name="saat" value="{esc(saat, True)}"></div>'
             f'<details class="adv"><summary>Gelişmiş</summary><div class="field"><label>Tolerans (dk)</label>'
@@ -1229,7 +1234,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
 
     MAP_JS = """
 (function(){
-var map=L.map('map',{preferCanvas:true}).setView([39.93,32.86],11);
+var map=L.map('map',{preferCanvas:true}).setView(__MERKEZ__);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
 var layer=(L.markerClusterGroup?L.markerClusterGroup({disableClusteringAtZoom:15,maxClusterRadius:45,showCoverageOnHover:false,chunkedLoading:true}):L.layerGroup()).addTo(map),data=[];
 if(!layer.addLayers){layer.addLayers=function(a){a.forEach(function(x){layer.addLayer(x);});};layer.zoomToShowLayer=function(m,f){f();};}
@@ -1307,8 +1312,9 @@ load();loadStops();setInterval(load,60000);
             '<div class="card fgrid">'
             '<div class="field grow"><label>Filo kodu, plaka, model veya hat (arama)</label><input id="q" placeholder="09-524 · 590 · Lion" autocomplete="off"></div>'
             '<div class="field"><label>Tam hat</label><input id="hat" placeholder="590" autocomplete="off"></div>'
-            '<div class="field"><label>İşletme</label><select id="op"><option value="">Tümü</option><option value="ego">EGO</option>'
-            '<option value="oho">ÖHO / Halk otobüsü (06 HO)</option></select></div>'
+            + ('<div class="field"><label>İşletme</label><select id="op"><option value="">Tümü</option><option value="ego">EGO</option>'
+               '<option value="oho">ÖHO / Halk otobüsü (06 HO)</option></select></div>' if cur_city() == "ankara"
+               else '<input type="hidden" id="op" value="">') +
             '<div class="field"><label>Tip</label><select id="tip"><option value="">Tümü</option><option value="Körüklü">Körüklü</option>'
             '<option value="Solo">Solo</option></select></div>'
             '<div class="field"><label>Son kaç saat</label><input id="saat" type="number" value="24" min="1" max="168"></div>'
@@ -1322,7 +1328,7 @@ load();loadStops();setInterval(load,60000);
             '<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">'
             '<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>'
             '<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>'
-            "<script>" + MAP_JS + "</script>"
+            "<script>" + MAP_JS.replace("__MERKEZ__", "[%s,%s],%s" % tuple(city_meta()["merkez"])) + "</script>"
         )
         return layout("/harita", body, "Harita · EGO Filo Takip")
 
