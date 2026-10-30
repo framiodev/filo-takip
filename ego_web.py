@@ -170,9 +170,18 @@ CITIES = [
                 ("(ör. <b>09-524</b>)", "(ör. <b>C-1234</b>)"), ("ör. <b>09-524</b>", "ör. <b>C-1234</b>")],
      "durak_ornek": "Kadıköy veya 100123", "hat_ornek": "500T veya 15F", "gun_ornek": "500T · Tuzla · Cevizlibağ",
      "durak_not": "Duraklar İBB açık verisinden gelir. İstanbul için canlı yaklaşan araç bilgisi yoktur; geçen araçlar kendi kayıtlarımızdan gösterilir."},
-    {"id": "izmir", "ad": "İzmir", "kurum": "ESHOT · İzmir Büyükşehir", "aktif": False},
+    {"id": "izmir", "ad": "İzmir", "kurum": "ESHOT · İzmir Büyükşehir", "aktif": False, "db": "IZMIR_DB",
+     "kisa": "ESHOT", "merkez": [38.42, 27.14, 11], "ornek": "2212 · 11848", "kaynak": "İzmir Büyükşehir açık veri servisleri",
+     "durak_ornek": "Bahribaba veya 10005", "hat_ornek": "446 veya 5", "gun_ornek": "446 · Üçkuyular · Narlıdere",
+     "durak_not": "Duraklar İzmir Büyükşehir açık verisinden gelir. İzmir için canlı yaklaşan araç bilgisi gösterilmez; geçen araçlar kendi kayıtlarımızdan gelir."},
 ]
 CITY_BY_ID = {c["id"]: c for c in CITIES}
+CITY_BY_ID["izmir"]["yerles"] = [
+    (a, b) for a, b in CITY_BY_ID["istanbul"]["yerles"]
+] + [("Durak konumları İBB'nin resmi verisinden gelir.", "Durak konumları İzmir Büyükşehir'in resmi verisinden gelir."),
+     ("İETT Filo Takip", "ESHOT Filo Takip"), ("C-1234 · 500T · Mercedes", "2212 · 446 · Mercedes"),
+     ('id="hat" placeholder="500T"', 'id="hat" placeholder="446"'), ("Saatler İBB planlanan sefer saatleri verisindendir.", "Saatler İzmir Büyükşehir hareket saatleri verisindendir."),
+     ("(ör. <b>C-1234</b>)", "(ör. <b>2212</b>)"), ("ör. <b>C-1234</b>", "ör. <b>2212</b>"), ('placeholder="C-1234"', 'placeholder="2212"')]
 GUN_AD = ("Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz")
 
 
@@ -199,8 +208,11 @@ def natural_key(s):
 
 def make_handler(E):
 
-    IST_DB = os.environ.get("IETT_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "iett_filo.db"))
-    CITY_BY_ID["istanbul"]["aktif"] = os.path.exists(IST_DB)
+    _here = os.path.dirname(os.path.abspath(__file__))
+    CITY_DB = {"istanbul": os.environ.get("IETT_DB", os.path.join(_here, "iett_filo.db")),
+               "izmir": os.environ.get("IZMIR_DB", os.path.join(_here, "izmir_filo.db"))}
+    for _c, _p in CITY_DB.items():
+        CITY_BY_ID[_c]["aktif"] = os.path.exists(_p)
 
     def city_meta():
         return CITY_BY_ID.get(cur_city(), CITY_BY_ID["ankara"])
@@ -989,7 +1001,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
     # ------------------------------------------------------------------ Şehir seçimi
     def city_stats(cid="ankara"):
         try:
-            conn = E.connect(IST_DB if cid == "istanbul" else E.DB_PATH)
+            conn = E.connect(CITY_DB.get(cid) or E.DB_PATH)
             try:
                 n = conn.execute("SELECT COUNT(DISTINCT plaka) FROM stints").fetchone()[0]
                 fd = first_data_day(conn)
@@ -1236,7 +1248,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
             return json.dumps({"duraklar": []})
         conn = E.connect()
         try:
-            if cur_city() == "istanbul":  # İBB resmi koordinatları (n=0 → kesin)
+            if cur_city() in CITY_DB:  # resmi durak koordinatları (n=0 → kesin)
                 rows = conn.execute(
                     "SELECT g.durak, g.lat, g.lng, 0, g.ad, '' FROM stops_geo g "
                     "WHERE g.lat BETWEEN ? AND ? AND g.lng BETWEEN ? AND ? LIMIT 400", (s_, n_, w_, e_)).fetchall()
@@ -1471,7 +1483,7 @@ load();loadStops();setInterval(load,60000);
         def _set_city(self):
             c = self._sehir() or "ankara"
             E.CITY_CTX.city = c
-            E.CITY_CTX.db = IST_DB if c == "istanbul" else None
+            E.CITY_CTX.db = CITY_DB.get(c)
 
         def do_GET(self):
             self._set_city()
