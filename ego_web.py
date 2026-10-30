@@ -1745,40 +1745,62 @@ function info(a){
  var yn=a.yn==null?'-':a.yn+'°';
  return kv('Model',a.m?esc(a.m)+' ~':'-',1)+kv('Plaka',esc(a.p))+kv('Filo kodu',esc(a.f||'-'))+kv('Hız',esc(a.v||0)+' km/sa')+kv('Yön',yn)+kv('Durum',statusOf(a))+kv('Son görülme',esc(String(a.t).slice(-11)))+(a.d?kv('Yöneldiği durak',esc(a.d),1):'');
 }
-function upd(a){var h=panel.querySelector('.fr-head'),i=panel.querySelector('.fr-info');if(h)h.innerHTML=head(a);if(i)i.innerHTML=info(a);}
+function upd(a){var h=panel.querySelector('.fr-head'),i=panel.querySelector('.fr-info'),n=panel.querySelector('.led-next');if(n)n.textContent=a.d||'—';if(h)h.innerHTML=head(a);if(i)i.innerHTML=info(a);}
 function sec(t,h,o){return '<button class="pc-sec" aria-expanded="'+(o?'true':'false')+'">'+t+'</button><div class="pc-body"'+(o?'':' hidden')+'>'+h+'</div>';}
-function ledStil(m){var T=window.TABELA||{},d=T.varsayilan||{no:'#ffb000',ust:'#ffb000',metin:'#ffb000',iki_satir:false},x=String(m||'').toLowerCase(),r=d;
+var LEDF={A:[14,17,17,31,17,17,17],B:[30,17,17,30,17,17,30],C:[14,17,16,16,16,17,14],D:[30,17,17,17,17,17,30],E:[31,16,16,30,16,16,31],F:[31,16,16,30,16,16,16],G:[14,17,16,23,17,17,15],H:[17,17,17,31,17,17,17],I:[14,4,4,4,4,4,14],J:[7,2,2,2,2,18,12],K:[17,18,20,24,20,18,17],L:[16,16,16,16,16,16,31],M:[17,27,21,21,17,17,17],N:[17,25,21,19,17,17,17],O:[14,17,17,17,17,17,14],P:[30,17,17,30,16,16,16],Q:[14,17,17,17,21,18,13],R:[30,17,17,30,20,18,17],S:[15,16,16,14,1,1,30],T:[31,4,4,4,4,4,4],U:[17,17,17,17,17,17,14],V:[17,17,17,17,17,10,4],W:[17,17,17,21,21,21,10],X:[17,17,10,4,10,17,17],Y:[17,17,17,10,4,4,4],Z:[31,1,2,4,8,16,31],
+'0':[14,17,19,21,25,17,14],'1':[4,12,4,4,4,4,14],'2':[14,17,1,2,4,8,31],'3':[31,2,4,2,1,17,14],'4':[2,6,10,18,31,2,2],'5':[31,16,30,1,1,17,14],'6':[6,8,16,30,17,17,14],'7':[31,1,2,4,8,8,8],'8':[14,17,17,14,17,17,14],'9':[14,17,17,15,1,2,12],
+'.':[0,0,0,0,0,12,12],'-':[0,0,0,31,0,0,0],'/':[1,1,2,4,8,16,16],"'":[4,4,8,0,0,0,0],',':[0,0,0,0,12,4,8],' ':[0,0,0,0,0,0,0]};
+var LEDX={'Ç':['C',[0,0],4],'Ş':['S',[0,0],4],'Ğ':['G',[10,4],0],'İ':['I',[0,4],0],'Ö':['O',[0,10],0],'Ü':['U',[0,10],0]};
+function ledGlyph(ch){var x=LEDX[ch];if(x)return {rows:LEDF[x[0]],acc:x[1],tail:x[2]};return {rows:LEDF[ch]||LEDF[' '],acc:[0,0],tail:0};}
+function ledBits(text,scale){ // [rows][cols] kutusu: 2 aksan + 7 harf + 1 kuyruk satırı, ölçekle
+ var cell=[],cols=0,gl=[],i;for(i=0;i<text.length;i++){gl.push(ledGlyph(text[i]));}
+ var W=gl.length*6*scale,H=10*scale,out=[],r,c;for(r=0;r<H;r++){out.push(new Uint8Array(W));}
+ gl.forEach(function(g,gi){var rows=[g.acc[0],g.acc[1]].concat(g.rows).concat([g.tail]);
+  rows.forEach(function(bits,ri){for(var cb=0;cb<5;cb++){if(bits&(16>>cb)){for(var sy=0;sy<scale;sy++)for(var sx=0;sx<scale;sx++){out[ri*scale+sy][(gi*6+cb)*scale+sx]=1;}}}});});
+ return {b:out,w:W,h:H};
+}
+function ledStil(m){var T=window.TABELA||{},d=T.varsayilan||{arka:'#050505',no:'#ff9a1a',ust:'#ff9a1a',alt:'#ff9a1a',iki_satir:true,nokta:3},x=String(m||'').toLowerCase(),r=d;
  (T.modeller||[]).some(function(k){if(k.eslesen&&x.indexOf(String(k.eslesen).toLowerCase())>=0){r=Object.assign({},d,k);return true;}return false;});return r;}
-function startLed(a,hat,dest,TR,hatAd){
- var box=panel.querySelector('.led'),t=panel.querySelector('.led-t');if(!box||!t)return;
- var st=ledStil(a.m);box.classList.toggle('two',!!st.iki_satir);
- clearTimeout(panel._ledT);var k=0,reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
- function show(){
-  if(!panel.contains(box)||selA!==a){return;}
-  var live=(selA&&selA.d)?TR(selA.d):'',next=(k%2===1&&live);k++;
-  var h;
-  if(next){h=st.iki_satir?'<span class="l1" style="color:'+st.ust+'">SIRADAKİ DURAK</span><span class="l2" style="color:'+st.metin+'">'+esc(live)+'</span>':'<span class="l2" style="color:'+st.metin+'">SIRADAKİ DURAK  '+esc(live)+'</span>';}
-  else if(st.iki_satir){h='<span class="l1" style="color:'+st.ust+'">'+esc(hatAd||'')+'</span><span class="l2"><b style="color:'+st.no+'">'+esc(hat)+'</b> <span style="color:'+st.metin+'">'+esc(dest)+'</span></span>';}
-  else{h='<span class="l2"><b style="color:'+st.no+'">'+esc(hat)+'</b> <span style="color:'+st.metin+'">'+esc(dest)+'</span></span>';}
-  t.style.animation='none';t.innerHTML=h;void t.offsetWidth;
-  var w=t.scrollWidth,W=box.clientWidth,ms=4200;
-  if(w>W&&!reduce){var dur=Math.max(4,(w+W)/70);t.style.setProperty('--s',W+'px');t.style.setProperty('--e',w+'px');t.style.animation='ledscroll '+dur+'s linear 1';ms=dur*1000+500;}
-  panel._ledT=setTimeout(show,ms);
+function startLed(a,hat,l1,l2){
+ var box=panel.querySelector('.led'),cv=box&&box.querySelector('canvas');if(!cv)return;
+ cancelAnimationFrame(panel._ledR);
+ var st=ledStil(a.m),p=st.nokta||3,cols=Math.floor(box.clientWidth/p),rows=24,dpr=window.devicePixelRatio||1,ctx=cv.getContext('2d');
+ cv.style.width=cols*p+'px';cv.style.height=rows*p+'px';cv.width=cols*p*dpr;cv.height=rows*p*dpr;box.style.background=st.arka;
+ var hs=(hat||'').split('-')[0],ns=hs.length>3?1:2,nb=ledBits(hs,ns),nx=2,tx=nx+nb.w+3,tw=Math.max(8,cols-tx-2);
+ var L1=ledBits(l1||'',1),L2=ledBits(l2||'',1),two=st.iki_satir&&l1;
+ var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches,t0=performance.now(),gap=10,last=-1;
+ function lit(bits,r,c){return bits&&r>=0&&r<bits.length&&bits[r][c]?1:0;}
+ function smp(L,rr,cc,o){if(!L.w||rr<0||rr>=L.h)return 0;var x=cc+o;if(L.w>tw){x=x%(L.w+gap);}if(x>=L.w)return 0;return L.b[rr][x]?1:0;}
+ function colOff(L,t){if(L.w<=tw||reduce)return 0;var step=Math.max(0,Math.floor((t-t0-1800)/80));return step%(L.w+gap);}
+ function frame(now){
+  if(!panel.contains(cv)||selA!==a)return;
+  var o1=colOff(L1,now),o2=colOff(L2,now),key=o1*10007+o2;
+  if(key!==last){last=key;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,cols*p,rows*p);
+   var unl=st.arka==='#050505'?'rgba(255,255,255,.045)':'rgba(255,255,255,.05)',R=p*0.42,r,c;
+   for(r=0;r<rows;r++)for(c=0;c<cols;c++){var col=null;
+    var nr=r-Math.floor((rows-nb.h)/2);if(c>=nx&&c<nx+nb.w&&lit(nb.b,nr,c-nx))col=st.no;
+    else if(c>=tx&&c<tx+tw){var cc=c-tx;
+     if(two){if(smp(L1,r-1,cc,o1))col=st.ust;if(smp(L2,r-12,cc,o2))col=st.alt;}
+     else if(smp(L2,r-7,cc,o2))col=st.alt;}
+    var x=c*p+p/2,y=r*p+p/2;
+    if(col){ctx.fillStyle=col;ctx.globalAlpha=.22;ctx.beginPath();ctx.arc(x,y,R*1.9,0,6.3);ctx.fill();ctx.globalAlpha=1;ctx.beginPath();ctx.arc(x,y,R,0,6.3);ctx.fill();}
+    else{ctx.fillStyle=unl;ctx.beginPath();ctx.arc(x,y,R*.8,0,6.3);ctx.fill();}}}
+  panel._ledR=requestAnimationFrame(frame);
  }
- show();
+ panel._ledR=requestAnimationFrame(frame);
 }
 function routeBlock(a){
  getRota(a.h).then(function(rota){
   var bx=panel.querySelector('.pc-rt'),pg=panel.querySelector('.pc-pg');if(selA!==a||!bx||!rota||rota.length<2){if(bx)bx.style.display='none';return;}
   var f=rota[0],l=rota[rota.length-1];function cd(n){return String(n||'?').slice(0,3).toLocaleUpperCase('tr');}
   var TR=function(x){return String(x||'').toLocaleUpperCase('tr');};
-  bx.innerHTML='<div class="led"><div class="led-t"></div></div><div class="led-sub"><span>'+esc(f[3]||'')+'</span><span>→</span><span>'+esc(l[3]||'')+'</span></div>';
-  startLed(a,TR(a.h),TR(l[3]||''),TR,TR((f[3]||'')+' - '+(l[3]||'')));
+  bx.innerHTML='<div class="led"><canvas></canvas></div><div class="led-sub"><span>Sıradaki durak</span><b class="led-next">'+esc(a.d||'—')+'</b></div>';
+  startLed(a,TR(a.h),TR(f[3]||''),TR(l[3]||''));
   if(a.sr!=null&&l[2]>f[2]){var fr=Math.max(0,Math.min(1,(a.sr-f[2])/(l[2]-f[2])))*100;
    pg.innerHTML='<div class="bar2"><i style="width:'+fr.toFixed(0)+'%"></i></div><div class="pr"><span>'+a.sr+'. durak</span><span>%'+fr.toFixed(0)+' · toplam '+rota.length+' durak</span></div>';}
  });
 }
-function closePanel(){clearTimeout(panel._ledT);panel.style.display='none';trail.clearLayers();if(selM&&selA){styleOf(selM,selA,false);}selM=selA=null;}
+function closePanel(){cancelAnimationFrame(panel._ledR);panel.style.display='none';trail.clearLayers();if(selM&&selA){styleOf(selM,selA,false);}selM=selA=null;}
 function styleOf(m,a,on){var live=a.age<=15;m.setStyle(on?{radius:10,color:'#fff',weight:3,fillColor:'#c8102e',fillOpacity:1}:{radius:live?7:5,color:live?'#166534':'#6b7280',fillColor:live?'#22c55e':'#9ca3af',fillOpacity:live?.9:.6,weight:1});}
 var rotaCache={};
 function getRota(h){
@@ -1933,14 +1955,10 @@ load();loadStops();setInterval(load,60000);
 .pc-s{overflow:auto;flex:1;min-height:0}
 .pc-s .fr-photo{margin:0}
 .pc-rt{background:var(--chip);padding:12px 0 2px}
-.led{position:relative;background:#050505;border:3px solid #1d1d1d;border-radius:8px;margin:0 14px;height:56px;overflow:hidden;box-shadow:inset 0 0 14px #000,0 0 0 1px #3a3a3a}
-.led.two{height:68px}
-.led-t{position:absolute;top:0;left:0;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;white-space:nowrap;padding:0 14px;font:600 30px/1 'Pixelify Sans','DotGothic16',monospace;color:#ffb000;text-shadow:0 0 7px rgba(255,176,0,.85);letter-spacing:2px;will-change:transform}
-.led:after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 50%,transparent 36%,#050505 47%) 0 0/4px 4px}
-.led-t .l1{font-size:13px;letter-spacing:1.5px;margin-bottom:4px}.led.two .l2{font-size:27px}.led-t b{font-weight:600}
-@keyframes ledscroll{from{transform:translateX(var(--s))}to{transform:translateX(calc(-1 * var(--e)))}}
-.led-sub{display:flex;justify-content:space-between;gap:8px;padding:7px 16px 9px;font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700}
-@media(prefers-reduced-motion:reduce){.led-t{animation:none!important}}
+.led{position:relative;background:#050505;border:3px solid #1d1d1d;border-radius:8px;margin:0 14px;overflow:hidden;box-shadow:inset 0 0 14px rgba(0,0,0,.8),0 0 0 1px #3a3a3a;padding:0;line-height:0}
+.led canvas{display:block;margin:0 auto}
+.led-sub{display:flex;justify-content:space-between;gap:8px;padding:7px 16px 9px;font-size:.72rem;color:var(--muted);text-transform:uppercase;font-weight:700}.led-sub b{color:var(--ink);text-align:right}
+
 .pc-rt .nm{font-weight:700;font-size:.8rem;margin-top:6px;text-transform:uppercase}.pc-rt .sb{font-size:.7rem;color:var(--muted);margin-top:2px}
 .pc-rt .mid{position:absolute;left:50%;top:50%;width:40px;height:40px;border-radius:50%;background:var(--card);transform:translate(-50%,-50%);display:grid;place-items:center}
 .pc-tm{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-top:2px}

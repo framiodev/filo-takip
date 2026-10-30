@@ -1,25 +1,62 @@
 {
- "_not": "Model adında 'eslesen' geçen ilk kayıt kullanılır. Renkler tahminidir; gerçek tabela fotoğrafına göre düzeltin. no: hat numarası, ust: üst satır, metin: ana satır.",
+ "_not": "Model adında 'eslesen' geçen ilk kayıt kullanılır. Renkler gerçek araç fotoğraflarından yaklaşık okunmuştur. no: hat numarası rengi, ust/alt: 1. ve 2. satır, arka: panel zemini, nokta: nokta aralığı (px), dogrulandi: fotoğraftan doğrulandı mı.",
  "varsayilan": {
-  "no": "#ffb000",
-  "ust": "#ffb000",
-  "metin": "#ffb000",
-  "iki_satir": false
+  "arka": "#050505",
+  "no": "#ff9a1a",
+  "ust": "#ff9a1a",
+  "alt": "#ff9a1a",
+  "iki_satir": true,
+  "nokta": 3,
+  "dogrulandi": false
  },
  "modeller": [
   {
+   "eslesen": "a74",
+   "arka": "#202a1b",
+   "no": "#d5dc4a",
+   "ust": "#d5dc4a",
+   "alt": "#d5dc4a",
+   "dogrulandi": true
+  },
+  {
+   "eslesen": "lion's classic",
+   "arka": "#202a1b",
+   "no": "#d5dc4a",
+   "ust": "#d5dc4a",
+   "alt": "#d5dc4a",
+   "dogrulandi": true
+  },
+  {
    "eslesen": "conecto",
-   "no": "#ff7a00",
-   "ust": "#35d0ff",
-   "metin": "#ffb000",
-   "iki_satir": true
+   "arka": "#050505",
+   "no": "#58f06c",
+   "ust": "#ffd23a",
+   "alt": "#ff9a1a",
+   "dogrulandi": true
   },
   {
    "eslesen": "citaro",
-   "no": "#ff7a00",
-   "ust": "#35d0ff",
-   "metin": "#ffb000",
-   "iki_satir": true
+   "arka": "#050505",
+   "no": "#58f06c",
+   "ust": "#ffd23a",
+   "alt": "#ff9a1a",
+   "dogrulandi": false
+  },
+  {
+   "eslesen": "kent",
+   "arka": "#050505",
+   "no": "#ff9a1a",
+   "ust": "#ff9a1a",
+   "alt": "#ff9a1a",
+   "dogrulandi": true
+  },
+  {
+   "eslesen": "lion's city",
+   "arka": "#050505",
+   "no": "#ff9a1a",
+   "ust": "#ff9a1a",
+   "alt": "#ff9a1a",
+   "dogrulandi": false
   }
  ]
 }
