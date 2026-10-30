@@ -254,6 +254,13 @@ def cmd_run(args):
     conn = connect()
     http = E.Http(args.insecure)
     kods = sorted({k.rsplit(" ", 1)[0] for (k,) in conn.execute("SELECT hat FROM lines")})
+    if getattr(args, "hatlar", ""):
+        want = [x.strip().upper() for x in args.hatlar.split(",") if x.strip()]
+        bulunan = [k for k in kods if k.upper() in want]
+        yok = [w for w in want if w not in {k.upper() for k in kods}]
+        if yok:
+            print("Listede olmayan hatlar atlandı:", ", ".join(yok), flush=True)
+        kods = bulunan
     if not kods:
         print("Önce 'python3 iett_tracker.py init' çalıştırın.")
         return 1
@@ -361,6 +368,7 @@ def main(argv=None):
     p.add_argument("--workers", type=int, default=1, help="paralel sorgu sayısı")
     p.add_argument("--no-raw", action="store_true")
     p.add_argument("--once", action="store_true")
+    p.add_argument("--hatlar", default="", help="yalnızca bu hatları tara (virgülle ayrılmış, ör. 500T,15F); deneme için")
     p.set_defaults(fn=cmd_run)
     args = ap.parse_args(argv)
     return args.fn(args)
