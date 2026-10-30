@@ -100,7 +100,7 @@ nav a i{font-style:normal}
 }
 @media (min-width:761px){nav a i{display:none}}
 @media (display-mode:standalone){footer{display:none}}
-@media (min-width:761px){.bar{max-width:1180px}nav{flex-wrap:nowrap}.pill{max-width:230px;overflow:hidden;text-overflow:ellipsis}}
+@media (min-width:761px){.bar{max-width:1180px;row-gap:6px}.pill{margin-left:auto;max-width:300px;overflow:hidden;text-overflow:ellipsis}nav{order:3;flex:1 0 100%;flex-wrap:nowrap;gap:2px;border-top:1px solid var(--line);padding-top:6px;margin:0 -4px}nav a{white-space:nowrap;padding:7px 14px;font-size:.92rem}}
 @media (max-width:760px){nav a.desk{display:none}.brand{white-space:nowrap;flex-shrink:0}.pill{min-width:0;overflow:hidden;text-overflow:ellipsis}}
 .citychip{display:inline-flex;align-items:center;gap:4px;padding:5px 11px;border-radius:999px;background:var(--chip);color:var(--ink);
  font-size:.82rem;font-weight:700;text-decoration:none;white-space:nowrap}
