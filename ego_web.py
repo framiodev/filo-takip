@@ -159,6 +159,15 @@ CITIES = [
      "durak_not": "EGO durak koordinatı yayınlamadığı için “ne kadar yakın” bilgisi, aracın tahmini varış süresi ve kaç durak kaldığı olarak gösterilir."},
     {"id": "istanbul", "ad": "İstanbul", "kurum": "İETT · İBB", "aktif": False, "db": "IETT_DB",
      "kisa": "İETT", "merkez": [41.04, 29.0, 10], "ornek": "C-1234 · 34 TB 1234", "kaynak": "İBB açık veri servisleri",
+     "yerles": [("Durak konumları araç verisinden tahmin edilir, EGO koordinat yayınlamaz.", "Durak konumları İBB'nin resmi verisinden gelir."),
+                ("EGO canlı listesinde", "canlı listede"), ("EGO canlı servisi", "Canlı servis"), ("canlı · EGO", "canlı"),
+                ("EGO doluluk bilgisi", "Doluluk bilgisi"), ("EGO canlı verisi", "Canlı veri"),
+                ("EGO listesinde şu an yok", "Canlı listede şu an yok"), ("EGO cevap vermedi", "Servis cevap vermedi"),
+                ("Saatler EGO “Hareket Saatleri” sayfasındandır.", "Saatler İBB planlanan sefer saatleri verisindendir."),
+                ("EGO Filo Takip", "İETT Filo Takip"),
+                ("09-524 · 590 · Lion", "C-1234 · 500T · Mercedes"), ('id="hat" placeholder="590"', 'id="hat" placeholder="500T"'),
+                ("MAN Lion&#39;s Classic CNG", "Mercedes-Benz Citaro"), ('placeholder="09-524"', 'placeholder="C-1234"'),
+                ("(ör. <b>09-524</b>)", "(ör. <b>C-1234</b>)"), ("ör. <b>09-524</b>", "ör. <b>C-1234</b>")],
      "durak_ornek": "Kadıköy veya 100123", "hat_ornek": "500T veya 15F", "gun_ornek": "500T · Tuzla · Cevizlibağ",
      "durak_not": "Duraklar İBB açık verisinden gelir. İstanbul için canlı yaklaşan araç bilgisi yoktur; geçen araçlar kendi kayıtlarımızdan gösterilir."},
     {"id": "izmir", "ad": "İzmir", "kurum": "ESHOT · İzmir Büyükşehir", "aktif": False},
@@ -284,6 +293,11 @@ def make_handler(E):
 
     SOFT_REFRESH = "<script>(function(){var P=document.querySelector('[data-live]');if(!P)return;var iv=(parseInt(P.getAttribute('data-live'),10)||30)*1000;\nfunction busy(){var a=document.activeElement;if(a&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName))return true;var f=document.querySelectorAll('main input,main select');for(var i=0;i<f.length;i++){if(f[i].type!=='hidden'&&f[i].value!==f[i].defaultValue)return true;}return false;}\nfunction tick(){if(document.hidden||busy())return;\nfetch(location.href,{credentials:'same-origin'}).then(function(r){return r.ok?r.text():null}).then(function(t){if(!t)return;\nvar d=new DOMParser().parseFromString(t,'text/html'),nm=d.querySelector('main'),m=document.querySelector('main');if(!nm||!m||busy())return;\nvar open=[].map.call(m.querySelectorAll('details'),function(x){return x.open;});\nvar om=m.querySelectorAll('.vmapwrap'),nn=nm.querySelectorAll('.vmapwrap');\nnn.forEach(function(n,i){if(om[i])n.parentNode.replaceChild(om[i],n);});\nnm.querySelectorAll('details').forEach(function(x,i){if(open[i]!==undefined)x.open=open[i];});\nvar y=window.scrollY;m.replaceWith(document.adoptNode(nm));window.scrollTo(0,y);\nvar op=document.querySelector('header .pill'),np=d.querySelector('header .pill');if(op&&np)op.replaceWith(document.adoptNode(np));\n}).catch(function(){});}\nsetInterval(tick,iv);document.addEventListener('visibilitychange',function(){if(!document.hidden)tick();});})();</script>"
 
+    def localize(html_text):
+        for a, b in city_meta().get("yerles", ()):
+            html_text = html_text.replace(a, b)
+        return html_text
+
     def layout(active, body, title="EGO Filo Takip", picker=False):
         if picker:
             nav, chip, status = "", "", ""
@@ -293,7 +307,7 @@ def make_handler(E):
                 for h, t, ic in TABS)
             chip = '<a class="citychip" href="/sehir" title="Şehri değiştir">📍 %s ▾</a>' % esc(CITY_BY_ID[cur_city()]["ad"])
             status = status_chip()
-        return (
+        return localize(
             '<!doctype html><html lang="tr"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
             '<meta name="theme-color" content="#c8102e"><meta name="mobile-web-app-capable" content="yes">'
@@ -1222,10 +1236,15 @@ document.querySelectorAll('.vmap').forEach(function(el){
             return json.dumps({"duraklar": []})
         conn = E.connect()
         try:
-            rows = conn.execute(
-                "SELECT p.durak, p.lat, p.lng, p.n, (SELECT ad FROM line_route r WHERE r.durak=p.durak AND r.ad<>'' LIMIT 1), "
-                "(SELECT adres FROM stop_info i WHERE i.durak=p.durak) FROM stop_pos p "
-                "WHERE p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ? LIMIT 400", (s_, n_, w_, e_)).fetchall()
+            if cur_city() == "istanbul":  # İBB resmi koordinatları (n=0 → kesin)
+                rows = conn.execute(
+                    "SELECT g.durak, g.lat, g.lng, 0, g.ad, '' FROM stops_geo g "
+                    "WHERE g.lat BETWEEN ? AND ? AND g.lng BETWEEN ? AND ? LIMIT 400", (s_, n_, w_, e_)).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT p.durak, p.lat, p.lng, p.n, (SELECT ad FROM line_route r WHERE r.durak=p.durak AND r.ad<>'' LIMIT 1), "
+                    "(SELECT adres FROM stop_info i WHERE i.durak=p.durak) FROM stop_pos p "
+                    "WHERE p.lat BETWEEN ? AND ? AND p.lng BETWEEN ? AND ? LIMIT 400", (s_, n_, w_, e_)).fetchall()
             out = []
             for d, la, lo, n, ad, adres in rows:
                 hats = [r[0] for r in conn.execute("SELECT hat FROM line_stops WHERE durak=? LIMIT 40", (d,))]
@@ -1292,7 +1311,7 @@ function loadStops(){
   (j.duraklar||[]).forEach(function(s){
    var m=L.circleMarker([s.la,s.lo],{radius:7,color:'#fff',weight:2,fillColor:'#1d4ed8',fillOpacity:.95,pane:'markerPane'});
    var hl=s.h.map(function(h){return '<a href="/hat?no='+encodeURIComponent(h)+'">'+esc(h)+'</a>';}).join(' · ');
-   m.bindPopup('<b>'+esc(s.ad||'Durak')+'</b> &middot; '+esc(s.d)+(s.adres?'<br>'+esc(s.adres):'')+'<br>Hatlar: '+(hl||'-')+'<br><a href="/durak?no='+encodeURIComponent(s.d)+'">Yaklaşan araçlar</a><br><span style="opacity:.7;font-size:.8em">Konum araç verisinden tahminidir ('+s.n+' geçiş)</span>');
+   m.bindPopup('<b>'+esc(s.ad||'Durak')+'</b> &middot; '+esc(s.d)+(s.adres?'<br>'+esc(s.adres):'')+'<br>Hatlar: '+(hl||'-')+'<br><a href="/durak?no='+encodeURIComponent(s.d)+'">Yaklaşan araçlar</a><br><span style="opacity:.7;font-size:.8em">'+(s.n>0?'Konum araç verisinden tahminidir ('+s.n+' geçiş)':'Resmi durak konumu')+'</span>');
    m.addTo(stopLayer);
   });
  }).catch(function(){});
@@ -1317,9 +1336,9 @@ load();loadStops();setInterval(load,60000);
             '<div class="field"><label>Tam hat</label><input id="hat" placeholder="590" autocomplete="off"></div>'
             + ('<div class="field"><label>İşletme</label><select id="op"><option value="">Tümü</option><option value="ego">EGO</option>'
                '<option value="oho">ÖHO / Halk otobüsü (06 HO)</option></select></div>' if cur_city() == "ankara"
-               else '<input type="hidden" id="op" value="">') +
-            '<div class="field"><label>Tip</label><select id="tip"><option value="">Tümü</option><option value="Körüklü">Körüklü</option>'
-            '<option value="Solo">Solo</option></select></div>'
+               else '<input type="hidden" id="op" value="">')
+            + ('<div class="field"><label>Tip</label><select id="tip"><option value="">Tümü</option><option value="Körüklü">Körüklü</option>'
+               '<option value="Solo">Solo</option></select></div>' if cur_city() == "ankara" else '<input type="hidden" id="tip" value="">') +
             '<div class="field"><label>Son kaç saat</label><input id="saat" type="number" value="24" min="1" max="168"></div>'
             '<div class="field"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input id="live" type="checkbox" style="width:auto"> yalnız canlı</label></div></div>'
             '<div class="muted" id="cnt" style="margin:6px 2px 10px">Yükleniyor…</div>'
