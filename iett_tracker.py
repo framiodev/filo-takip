@@ -251,9 +251,9 @@ def cmd_run(args):
         print("Önce 'python3 iett_tracker.py init' çalıştırın.")
         return 1
     sira_of = {(h, d): s for h, d, s in conn.execute("SELECT hat, durak, sira FROM line_route")}
-    gap = int(args.interval * 60 * 3)
+    gap = max(int(args.interval * 60 * 3), 1800)  # tur ~13 dk sürebilir; aynı aracın kaydı 30 dk içinde sürer
     idle = {}
-    fl_warned, last_fl, fl_ts = False, {}, 0.0
+    fl_warned, last_fl, fl_ts, backoff = False, {}, 0.0, 0
     print(f"İETT toplayıcı: {len(kods)} hat, {args.interval} dk aralık.", flush=True)
     while not STOP.is_set():
         t0 = time.time()
@@ -276,8 +276,10 @@ def cmd_run(args):
                 idle[k] -= 1
         new = veh = fails = 0
 
+        abort = threading.Event()
+
         def _fetch(kod):
-            if STOP.is_set():
+            if STOP.is_set() or abort.is_set():
                 return kod, None
             rows = line_vehicles(http, kod)
             time.sleep(args.delay)
@@ -291,7 +293,12 @@ def cmd_run(args):
                     print(f"  ilk sonuç: hat {kod} -> {None if rows is None else len(rows)} araç ({int(time.time() - t0)} sn) {soap.last_error if rows is None else ''}", flush=True)
                 if rows is None:
                     fails += 1
+                    consec += 1
+                    if consec >= 5 and veh == 0 or consec >= 25:
+                        abort.set()  # İBB hız sınırı: kalan sorguları gönderme
+                        break
                     continue
+                consec = 0
                 idle[kod] = 0 if rows else args.idle_max
                 for r in rows:
                     row, key = to_ego_row(r, fl, sira_of)
@@ -301,10 +308,13 @@ def cmd_run(args):
                 if n % 25 == 0:
                     conn.commit()
                     print(f"  ... {n}/{len(due)} hat, {veh} araç, {fails} hata, {int(time.time() - t0)} sn", flush=True)
-        if due and fails >= len(due) * 0.9 and veh == 0:
-            print(f"Hat sorguları başarısız ({fails}/{len(due)}): {soap.last_error} - 10 dk bekleniyor", flush=True)
-            STOP.wait(600)
+        if due and veh == 0 and fails >= 5:
+            backoff = min(backoff * 2 if backoff else 1800, 7200)
+            print(f"Hat sorguları başarısız ({fails}): {soap.last_error} - hız sınırı olabilir, {backoff // 60} dk bekleniyor", flush=True)
+            STOP.wait(backoff)
+            fl_ts = 0.0
             continue
+        backoff = 0
         conn.execute("INSERT OR REPLACE INTO meta (k, v) VALUES ('last_cycle', ?)",
                      (json.dumps({"ts": E.now_ts(), "due": len(due), "vehicles": veh, "fails": fails, "interval": args.interval,
                                   "fleet": len(fl)}),))
@@ -336,9 +346,9 @@ def main(argv=None):
     p.set_defaults(fn=cmd_saatler)
     p = sub.add_parser("run")
     p.add_argument("--interval", type=float, default=3, help="tur aralığı (dk)")
-    p.add_argument("--delay", type=float, default=0.15)
+    p.add_argument("--delay", type=float, default=1.0, help="her sorgudan sonra bekleme (sn); İBB hız sınırı için düşük tutmayın")
     p.add_argument("--idle-max", type=int, default=3)
-    p.add_argument("--workers", type=int, default=3, help="paralel sorgu sayısı")
+    p.add_argument("--workers", type=int, default=1, help="paralel sorgu sayısı")
     p.add_argument("--no-raw", action="store_true")
     p.add_argument("--once", action="store_true")
     p.set_defaults(fn=cmd_run)
