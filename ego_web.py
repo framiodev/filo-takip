@@ -1769,10 +1769,14 @@ function startLed(a,hat,l1,l2,adi){
  cv.style.width=cols*p+'px';cv.style.height=rows*p+'px';cv.width=cols*p*dpr;cv.height=rows*p*dpr;box.style.background=st.arka;
  var hs=(hat||'').split('-')[0],ns=(st.pul||hs.length>3)?1:2,nb=ledBits(hs,ns),nx=2,tx=nx+nb.w+3,tw=Math.max(8,cols-tx-1);
  var L1=ledBits(l1||'',1),L2=ledBits(l2||'',1),two=st.iki_satir&&l1;
- var pulPages=null;if(st.pul){var mc=Math.max(4,Math.floor(tw/6)),wd=(adi||l2||l1||'').replace(/\\s*[-–]\\s*/g,' - ').split(/\\s+/),ln=[],cur='';
-  wd.forEach(function(w){while(w.length>mc){if(cur){ln.push(cur);cur='';}ln.push(w.slice(0,mc));w=w.slice(mc);}
-   if(!cur)cur=w;else if((cur+' '+w).length<=mc)cur+=' '+w;else{ln.push(cur);cur=w;}});if(cur)ln.push(cur);
-  pulPages=[];for(var q=0;q<ln.length;q+=2){pulPages.push([ledBits(ln[q],1),ledBits(ln[q+1]||'',1)]);}if(!pulPages.length)pulPages=[[ledBits('',1),ledBits('',1)]];}
+ var pulPages=null;if(st.pul){var mc=Math.max(4,Math.floor(tw/6)),segs=(adi||l2||l1||'').split(/\\s+[-–]\\s+/),pgs=[],pg=[];
+  function wrapSeg(t){var tk=[];t.split(/\\s+/).forEach(function(w){if(!w)return;if(tk.length&&/^[A-ZÇĞİÖŞÜ]{1,4}\\.$/.test(w))tk[tk.length-1]+=' '+w;else tk.push(w);});
+   var out=[],cur='';tk.forEach(function(w){while(w.length>mc){if(cur){out.push(cur);cur='';}out.push(w.slice(0,mc));w=w.slice(mc);}
+    if(!cur)cur=w;else if((cur+' '+w).length<=mc)cur+=' '+w;else{out.push(cur);cur=w;}});if(cur)out.push(cur);return out;}
+  segs.forEach(function(sg){var ls=wrapSeg(sg);if(pg.length&&pg.length+ls.length>2){pgs.push(pg);pg=[];}
+   ls.forEach(function(l){if(pg.length>=2){pgs.push(pg);pg=[];}pg.push(l);});});
+  if(pg.length)pgs.push(pg);
+  pulPages=pgs.map(function(p){return [ledBits(p[0]||'',1),ledBits(p[1]||'',1)];});if(!pulPages.length)pulPages=[[ledBits('',1),ledBits('',1)]];}
  var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches,t0=performance.now(),gap=10,last=-1;
  function lit(bits,r,c){return bits&&r>=0&&r<bits.length&&bits[r][c]?1:0;}
  function smp(L,rr,cc,o){if(!L.w||rr<0||rr>=L.h)return 0;var x=cc+o;if(L.w>tw){x=x%(L.w+gap);}if(x>=L.w)return 0;return L.b[rr][x]?1:0;}
