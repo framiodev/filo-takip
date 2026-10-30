@@ -1638,6 +1638,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         conn = E.connect()
         try:
             rows = conn.execute("SELECT sira, durak, ad FROM line_route WHERE hat=? ORDER BY sira", (hat,)).fetchall()
+            hat_ad = (conn.execute("SELECT ad FROM lines WHERE hat=?", (hat,)).fetchone() or [""])[0] or ""
             pos = {d: (la, lo) for d, la, lo in conn.execute("SELECT durak, lat, lng FROM stop_pos")}
             if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='stops_geo'").fetchone():
                 for d, la, lo in conn.execute("SELECT durak, lat, lng FROM stops_geo"):
@@ -1645,7 +1646,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         finally:
             conn.close()
         rota = [[round(pos[d][0], 5), round(pos[d][1], 5), sr, ad or ""] for sr, d, ad in rows if d in pos and pos[d][0]]
-        return json.dumps({"rota": rota}, ensure_ascii=False)
+        return json.dumps({"rota": rota, "ad": hat_ad}, ensure_ascii=False)
 
     CANLI_CACHE = {}
 
@@ -1761,21 +1762,32 @@ function ledBits(text,scale){ // [rows][cols] kutusu: 2 aksan + 7 harf + 1 kuyru
 }
 function ledStil(m){var T=window.TABELA||{},d=T.varsayilan||{arka:'#050505',no:'#ff9a1a',ust:'#ff9a1a',alt:'#ff9a1a',iki_satir:true,nokta:3},x=String(m||'').toLowerCase(),r=d;
  (T.modeller||[]).some(function(k){if(k.eslesen&&x.indexOf(String(k.eslesen).toLowerCase())>=0){r=Object.assign({},d,k);return true;}return false;});return r;}
-function startLed(a,hat,l1,l2){
+function startLed(a,hat,l1,l2,adi){
  var box=panel.querySelector('.led'),cv=box&&box.querySelector('canvas');if(!cv)return;
  cancelAnimationFrame(panel._ledR);
  var st=ledStil(a.m),p=st.nokta||3,cols=Math.floor(box.clientWidth/p),rows=24,dpr=window.devicePixelRatio||1,ctx=cv.getContext('2d');
  cv.style.width=cols*p+'px';cv.style.height=rows*p+'px';cv.width=cols*p*dpr;cv.height=rows*p*dpr;box.style.background=st.arka;
  var hs=(hat||'').split('-')[0],ns=hs.length>3?1:2,nb=ledBits(hs,ns),nx=2,tx=nx+nb.w+3,tw=Math.max(8,cols-tx-2);
  var L1=ledBits(l1||'',1),L2=ledBits(l2||'',1),two=st.iki_satir&&l1;
+ var pulPages=null;if(st.pul){var mc=Math.max(4,Math.floor(tw/6)),wd=(adi||l2||l1||'').replace(/\\s*[-–]\\s*/g,' - ').split(/\\s+/),ln=[],cur='';
+  wd.forEach(function(w){while(w.length>mc){if(cur){ln.push(cur);cur='';}ln.push(w.slice(0,mc));w=w.slice(mc);}
+   if(!cur)cur=w;else if((cur+' '+w).length<=mc)cur+=' '+w;else{ln.push(cur);cur=w;}});if(cur)ln.push(cur);
+  pulPages=[];for(var q=0;q<ln.length;q+=2){pulPages.push([ledBits(ln[q],1),ledBits(ln[q+1]||'',1)]);}if(!pulPages.length)pulPages=[[ledBits('',1),ledBits('',1)]];}
  var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches,t0=performance.now(),gap=10,last=-1;
  function lit(bits,r,c){return bits&&r>=0&&r<bits.length&&bits[r][c]?1:0;}
  function smp(L,rr,cc,o){if(!L.w||rr<0||rr>=L.h)return 0;var x=cc+o;if(L.w>tw){x=x%(L.w+gap);}if(x>=L.w)return 0;return L.b[rr][x]?1:0;}
+ function pulCol(pi,r,c){if(c>=nx&&c<nx+nb.w){var nr=r-Math.floor((rows-nb.h)/2);return lit(nb.b,nr,c-nx)?st.no:null;}
+  if(c>=tx&&c<tx+tw){var P=pulPages[pi],cc=c-tx;if(P[0].w&&r>=1&&r-1<P[0].h&&cc<P[0].w&&P[0].b[r-1][cc])return st.ust;if(P[1].w&&r>=12&&r-12<P[1].h&&cc<P[1].w&&P[1].b[r-12][cc])return st.alt;}
+  return null;}
  function colOff(L,t){if(L.w<=tw||reduce)return 0;var step=Math.max(0,Math.floor((t-t0-1800)/80));return step%(L.w+gap);}
  function frame(now){
   if(!panel.contains(cv)||selA!==a)return;
   var o1=colOff(L1,now),o2=colOff(L2,now),key=o1*10007+o2;
-  var fl=st.pul&&!reduce&&(now-t0)<1400;if(fl)key=key*3+Math.floor((now-t0)/40);
+  var PG=3600,pi=0,pv=-1,tr=1e9;
+  if(pulPages){var el=Math.max(0,now-t0);pi=Math.floor(el/PG)%pulPages.length;var since=el%PG;tr=since;
+   pv=(pi===0&&el<PG)?-1:(pi-1+pulPages.length)%pulPages.length;if(pulPages.length===1&&el>=PG)pv=pi;
+   o1=0;o2=0;key=pi*100000+(since<1100&&!reduce?Math.floor(since/40):99999);}
+  var fl=pulPages&&!reduce&&tr<1100;
   if(key!==last){last=key;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,cols*p,rows*p);
    var unl=st.arka==='#050505'?'rgba(255,255,255,.045)':'rgba(255,255,255,.05)',R=p*0.42,r,c;
    for(r=0;r<rows;r++)for(c=0;c<cols;c++){var col=null;
@@ -1784,7 +1796,7 @@ function startLed(a,hat,l1,l2){
      if(two){if(smp(L1,r-1,cc,o1))col=st.ust;if(smp(L2,r-12,cc,o2))col=st.alt;}
      else if(smp(L2,r-7,cc,o2))col=st.alt;}
     var x=c*p+p/2,y=r*p+p/2;
-    if(st.pul){var hr=(Math.sin(c*12.9898+r*78.233)*43758.5453)%1;hr=Math.abs(hr);var ph=fl?Math.max(0,Math.min(1,((now-t0)-hr*700)/300)):1,sx=Math.abs(Math.cos(ph*Math.PI)),on=ph>=.5?col:null;
+    if(st.pul){var pc=pulCol(pi,r,c),pp=pv<0?null:pulCol(pv,r,c),hr=Math.abs((Math.sin(c*12.9898+r*78.233)*43758.5453)%1),ph=(fl&&(pc!==pp))?Math.max(0,Math.min(1,(tr-hr*700)/300)):1,sx=Math.abs(Math.cos(ph*Math.PI)),on=ph>=.5?pc:pp;
      ctx.fillStyle='#0b0d09';ctx.beginPath();ctx.arc(x,y,p*.5,0,6.3);ctx.fill();
      ctx.fillStyle=on||'#15190f';ctx.beginPath();ctx.ellipse(x,y,Math.max(.4,R*1.08*sx),R*1.08,0,0,6.3);ctx.fill();
      if(on&&sx>.8){ctx.fillStyle='rgba(255,255,255,.12)';ctx.beginPath();ctx.arc(x-R*.25,y-R*.3,R*.35,0,6.3);ctx.fill();}}
@@ -1800,7 +1812,7 @@ function routeBlock(a){
   var f=rota[0],l=rota[rota.length-1];function cd(n){return String(n||'?').slice(0,3).toLocaleUpperCase('tr');}
   var TR=function(x){return String(x||'').toLocaleUpperCase('tr');};
   bx.innerHTML='<div class="led"><canvas></canvas></div><div class="led-sub"><span>Sıradaki durak</span><b class="led-next">'+esc(a.d||'—')+'</b></div>';
-  startLed(a,TR(a.h),TR(f[3]||''),TR(l[3]||''));
+  startLed(a,TR(a.h),TR(f[3]||''),TR(l[3]||''),TR(rota.ad||''));
   if(a.sr!=null&&l[2]>f[2]){var fr=Math.max(0,Math.min(1,(a.sr-f[2])/(l[2]-f[2])))*100;
    pg.innerHTML='<div class="bar2"><i style="width:'+fr.toFixed(0)+'%"></i></div><div class="pr"><span>'+a.sr+'. durak</span><span>%'+fr.toFixed(0)+' · toplam '+rota.length+' durak</span></div>';}
  });
@@ -1810,7 +1822,7 @@ function styleOf(m,a,on){var live=a.age<=15;m.setStyle(on?{radius:10,color:'#fff
 var rotaCache={};
 function getRota(h){
  if(rotaCache[h])return Promise.resolve(rotaCache[h]);
- return fetch('/api/hat_rota?hat='+encodeURIComponent(h)).then(function(r){return r.json()}).then(function(j){return (rotaCache[h]=j.rota||[]);}).catch(function(){return [];});
+ return fetch('/api/hat_rota?hat='+encodeURIComponent(h)).then(function(r){return r.json()}).then(function(j){var r=j.rota||[];r.ad=j.ad||'';return (rotaCache[h]=r);}).catch(function(){return [];});
 }
 function drawTrip(t,i,rota){
  trail.clearLayers();
