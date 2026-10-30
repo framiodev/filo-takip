@@ -1433,6 +1433,26 @@ document.querySelectorAll('.vmap').forEach(function(el){
                         "tp": _tip_of(tips, arac, plaka)})
         return json.dumps({"n": len(out), "araclar": out}, ensure_ascii=False)
 
+    def api_arac_iz(g):
+        """Seçili aracın bugünkü seferleri ve iz noktaları (harita yan paneli için)."""
+        q = g("q")
+        if not q:
+            return json.dumps({"seferler": []})
+        conn = E.connect()
+        try:
+            res = E.query_day(conn, q, today())
+        finally:
+            conn.close()
+        out = []
+        v = res["vehicles"][0] if res["vehicles"] else None
+        for tr in (v["trips"] if v else []):
+            pts = [[round(x["lat"], 5), round(x["lng"], 5), fmt(x["t"], False), x.get("hiz") or ""]
+                   for x in tr["samples"] if x["lat"] and x["lng"]]
+            if pts:
+                out.append({"h": tr["hat"], "ad": tr.get("ad", ""), "t0": fmt(tr["samples"][0]["t"], False),
+                            "t1": fmt(tr["samples"][-1]["t"], False), "p": pts})
+        return json.dumps({"seferler": out}, ensure_ascii=False)
+
     CANLI_CACHE = {}
 
     def api_canli(g):
@@ -1518,22 +1538,58 @@ if(!layer.addLayers){layer.addLayers=function(a){a.forEach(function(x){layer.add
 function $(i){return document.getElementById(i);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
 function op(a){return String(a.p||'').replace(/\\s/g,'').toUpperCase().indexOf('06HO')===0?'oho':'ego';}
-function popupHtml(a){
- return '<b>'+esc(a.f||'-')+'</b> &middot; '+esc(a.p)+(a.m?'<br>'+esc(a.m)+' ~':'')+(a.tp?' <span style="opacity:.75">'+esc(a.tp)+'</span>':'')+'<br>Hat <b>'+esc(a.h)+'</b>'+(a.d?'<br>Yöneldiği durak: '+esc(a.d):'')+'<br>Hız: '+esc(a.v)+' km/sa<br>Son görülme: '+esc(a.t)+' ('+a.age+' dk önce)<br><a href="/?q='+encodeURIComponent(a.f||a.p)+'">Bugünkü seferleri</a><br><button class="rf" style="margin-top:6px;padding:5px 10px">Anlık yenile</button><span class="rfs"></span>';
+var panel=$('panel'),trail=L.layerGroup().addTo(map),selM=null,selA=null,tcols=['#c8102e','#1d4ed8','#15803d','#b45309','#7c3aed','#0e7490'];
+function bearing(a,b){var r=Math.PI/180,y=Math.sin((b[1]-a[1])*r)*Math.cos(b[0]*r),x=Math.cos(a[0]*r)*Math.sin(b[0]*r)-Math.sin(a[0]*r)*Math.cos(b[0]*r)*Math.cos((b[1]-a[1])*r);return (Math.atan2(y,x)/r+360)%360;}
+function statusOf(a){return a.age<=15?'<span class="fr-live">● canlı</span>':'<span class="fr-off">● '+(a.age<120?a.age+' dk önce':'son bilinen konum')+'</span>';}
+function head(a){
+ return '<div class="fr-plate">'+esc(a.p)+'</div><div class="fr-chips"><span>Filo '+esc(a.f||'-')+'</span>'+(a.m?'<span>'+esc(a.m)+' ~</span>':'')+(a.tp?'<span>'+esc(a.tp)+'</span>':'')+'</div>'
+ +'<div class="fr-kv"><div><b>Hat '+esc(a.h)+'</b><i>hat</i></div><div><b>'+esc(a.v||0)+' km/sa</b><i>hız</i></div><div><b>'+statusOf(a)+'</b><i>'+esc(String(a.t).slice(-11))+'</i></div></div>'
+ +(a.d?'<div class="fr-line">Yöneldiği durak: <b>'+esc(a.d)+'</b></div>':'');
 }
-function hook(m,a,popup){
- var el=popup.getElement();var b=el&&el.querySelector('.rf');if(!b)return;
- b.onclick=function(){
-  var s=el.querySelector('.rfs');b.disabled=true;s.textContent=' alınıyor…';
-  fetch('/api/canli?hat='+encodeURIComponent(a.h)).then(function(r){return r.json()}).then(function(j){
-   var n=(j.araclar||[]).filter(function(x){return (a.f&&x.f===a.f)||(a.p&&x.p.replace(/ /g,'')===a.p.replace(/ /g,''));})[0];
-   if(!n){b.disabled=false;s.textContent=j.hata?' '+j.hata:' araç şu an bu hatta listede yok';return;}
-   Object.keys(n).forEach(function(k){a[k]=n[k];});
-   layer.removeLayer(m);m.setLatLng([a.la,a.lo]);m.setStyle({color:'#166534',fillColor:'#22c55e',radius:7});
-   m.setPopupContent(popupHtml(a));layer.addLayer(m);
-   layer.zoomToShowLayer(m,function(){m.openPopup();});
-  }).catch(function(){b.disabled=false;s.textContent=' alınamadı';});
- };
+function closePanel(){panel.style.display='none';trail.clearLayers();if(selM&&selA){styleOf(selM,selA,false);}selM=selA=null;}
+function styleOf(m,a,on){var live=a.age<=15;m.setStyle(on?{radius:10,color:'#fff',weight:3,fillColor:'#c8102e',fillOpacity:1}:{radius:live?7:5,color:live?'#166534':'#6b7280',fillColor:live?'#22c55e':'#9ca3af',fillOpacity:live?.9:.6,weight:1});}
+function drawTrail(j,sel){
+ trail.clearLayers();var tr=(j&&j.seferler)||[],all=[];
+ tr.forEach(function(t,i){
+  var c=tcols[i%tcols.length],last=(i===sel),ll=t.p.map(function(x){return [x[0],x[1]];});all=all.concat(ll);
+  L.polyline(ll,{color:c,weight:last?5:3,opacity:last?.9:.4,dashArray:last?null:'5 7'}).addTo(trail).bindTooltip('Sefer '+(i+1)+' · Hat '+esc(t.h));
+  if(last){t.p.forEach(function(x){L.circleMarker([x[0],x[1]],{radius:3,color:c,weight:1,fillColor:c,fillOpacity:.9}).addTo(trail).bindTooltip(esc(x[2])+(x[3]?' · '+esc(x[3])+' km/sa':''));});
+   if(ll.length>1){var br=bearing(ll[ll.length-2],ll[ll.length-1]);L.marker(ll[ll.length-1],{icon:L.divIcon({className:'fr-arrow',html:'<div style="transform:rotate('+br+'deg)">▲</div>',iconSize:[22,22]}),interactive:false,keyboard:false}).addTo(trail);}}
+ });
+ return all;
+}
+function openPanel(a,m){
+ if(selM&&selA&&selM!==m)styleOf(selM,selA,false);
+ selM=m;selA=a;styleOf(m,a,true);m.bringToFront&&m.bringToFront();
+ panel.style.display='block';
+ panel.innerHTML='<button class="fr-x" aria-label="Kapat">×</button><div class="fr-head">'+head(a)+'</div><div class="fr-btns"><button class="fr-rf">Anlık yenile</button><a href="/?q='+encodeURIComponent(a.f||a.p)+'">Tüm sorgu sayfası →</a><span class="fr-rfs"></span></div><div class="fr-tabs"></div><div class="fr-tr muted">Seferler yükleniyor…</div>';
+ panel.querySelector('.fr-x').onclick=closePanel;
+ panel.querySelector('.fr-rf').onclick=function(){refreshLive(a,m);};
+ fetch('/api/arac_iz?q='+encodeURIComponent(a.p)).then(function(r){return r.json()}).then(function(j){
+  if(selA!==a)return;
+  var tr=j.seferler||[],box=panel.querySelector('.fr-tr'),tabs=panel.querySelector('.fr-tabs');
+  if(!tr.length){box.textContent='Bugün için sefer izi yok.';trail.clearLayers();return;}
+  function pick(i){
+   var all=drawTrail(j,i);[].forEach.call(tabs.children,function(b,k){b.className=(k===i)?'on':'';});
+   var t=tr[i];box.innerHTML='<b>Sefer '+(i+1)+' · Hat '+esc(t.h)+'</b> <span class="muted">'+esc(t.ad||'')+'</span><br><span class="muted">'+esc(t.t0)+' – '+esc(t.t1)+' · '+t.p.length+' nokta</span>';
+   var pts=(i<0?all:t.p.map(function(x){return [x[0],x[1]];}));pts.push([a.la,a.lo]);
+   if(pts.length>1)map.fitBounds(pts,{padding:[60,60],maxZoom:15});
+  }
+  tabs.innerHTML='';tr.forEach(function(t,i){var b=document.createElement('button');b.textContent='Sefer '+(i+1);b.title='Hat '+t.h+' · '+t.t0;b.onclick=function(){pick(i);};tabs.appendChild(b);});
+  pick(tr.length-1);
+ }).catch(function(){panel.querySelector('.fr-tr').textContent='Sefer izi alınamadı.';});
+}
+function refreshLive(a,m){
+ var b=panel.querySelector('.fr-rf'),st=panel.querySelector('.fr-rfs');b.disabled=true;st.textContent=' alınıyor…';
+ fetch('/api/canli?hat='+encodeURIComponent(a.h)).then(function(r){return r.json()}).then(function(j){
+  var n=(j.araclar||[]).filter(function(x){return (a.f&&x.f===a.f)||(a.p&&x.p.replace(/ /g,'')===a.p.replace(/ /g,''));})[0];
+  b.disabled=false;
+  if(!n){st.textContent=j.hata?' '+j.hata:' araç şu an canlı listede yok';return;}
+  Object.keys(n).forEach(function(k){a[k]=n[k];});
+  layer.removeLayer(m);m.setLatLng([a.la,a.lo]);layer.addLayer(m);styleOf(m,a,true);
+  var hd=panel.querySelector('.fr-head');if(hd)hd.innerHTML=head(a);
+  st.textContent=' güncellendi';map.panTo([a.la,a.lo]);
+ }).catch(function(){b.disabled=false;st.textContent=' alınamadı';});
 }
 function draw(){
  var q=$('q').value.trim().toLowerCase(),hat=$('hat').value.trim().toLowerCase(),o=$('op').value,tp=$('tip').value;
@@ -1548,12 +1604,13 @@ function draw(){
   var isLive=a.age<=15; if(onlyLive&&!isLive)return;
   shown++; if(isLive)live++;
   var m=L.circleMarker([a.la,a.lo],{radius:isLive?7:5,color:isLive?'#166534':'#6b7280',fillColor:isLive?'#22c55e':'#9ca3af',fillOpacity:isLive?.9:.6,weight:1});
-  m.bindPopup(popupHtml(a));
-  m.on('popupopen',function(e){hook(m,a,e.popup);});
+  m.on('click',function(){openPanel(a,m);});
+  if(selA&&a.p===selA.p){selM=m;selA=a;styleOf(m,a,true);}
   ms.push(m); b.push([a.la,a.lo]);
  });
  layer.addLayers(ms);
  $('cnt').textContent=shown+' araç gösteriliyor, '+live+' tanesi canlı (son 15 dk)';
+ if(selA&&panel.style.display==='block'){var hd=panel.querySelector('.fr-head');if(hd)hd.innerHTML=head(selA);}
  if((q||hat)&&b.length&&b.length<=30)map.fitBounds(b,{maxZoom:15,padding:[40,40]});
 }
 var stopLayer=L.layerGroup().addTo(map),stopKey='';
@@ -1578,17 +1635,47 @@ function load(){
 ['q','hat'].forEach(function(i){$(i).addEventListener('input',draw);});
 ['op','tip','live'].forEach(function(i){$(i).addEventListener('change',draw);});
 $('saat').addEventListener('change',load);
+$('full').onclick=function(){var w=$('frwrap'),on=!w.classList.contains('full');w.classList.toggle('full',on);document.body.style.overflow=on?'hidden':'';$('full').textContent=on?'✕ Tam ekrandan çık':'⛶ Tam ekran';setTimeout(function(){map.invalidateSize();},60);};
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){if($('frwrap').classList.contains('full'))$('full').onclick();else closePanel();}});
+map.on('click',function(){});
 var u=new URLSearchParams(location.search);if(u.get('q'))$('q').value=u.get('q');if(u.get('hat'))$('hat').value=u.get('hat');
 load();loadStops();setInterval(load,60000);
 })();
 """
 
+    FR_CSS = """<style>
+#frwrap{position:relative}
+#frwrap.full{position:fixed;inset:0;z-index:3000;background:var(--bg);padding:10px 12px;display:flex;flex-direction:column;gap:6px;overflow:auto}
+#frwrap .fmap{position:relative}
+#frwrap.full .fmap{flex:1;display:flex;min-height:0}
+#frwrap.full .fmap #map{flex:1;height:auto!important;min-height:0}
+.fr-bar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:6px 2px 8px}
+.fr-bar button{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card,var(--bg));color:var(--ink);font:inherit;font-size:.85rem;cursor:pointer}
+#panel{display:none;position:absolute;top:10px;right:10px;bottom:10px;width:330px;max-width:calc(100% - 20px);overflow:auto;z-index:1500;background:var(--card,#1a1d23);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+@media(max-width:700px){#panel{top:auto;left:8px;right:8px;bottom:8px;width:auto;max-height:52%}}
+.fr-x{position:absolute;top:8px;right:10px;border:0;background:none;color:var(--ink);font-size:1.6rem;line-height:1;cursor:pointer}
+.fr-plate{display:inline-block;font-weight:800;font-size:1.25rem;border:2px solid var(--ink);border-radius:8px;padding:2px 10px;letter-spacing:.04em;margin-right:30px}
+.fr-chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.fr-chips span{font-size:.8rem;padding:3px 9px;border-radius:999px;border:1px solid var(--line)}
+.fr-kv{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+.fr-kv div{background:var(--bg);border-radius:10px;padding:8px;text-align:center}
+.fr-kv b{display:block;font-size:.95rem}.fr-kv i{display:block;font-style:normal;font-size:.72rem;opacity:.65;margin-top:2px}
+.fr-live{color:#22c55e}.fr-off{color:#9ca3af}
+.fr-line{font-size:.88rem;margin:4px 0}
+.fr-btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.fr-btns button{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:.85rem;cursor:pointer}
+.fr-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.fr-tabs button{padding:4px 10px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:.8rem;cursor:pointer}
+.fr-tabs button.on{background:#c8102e;border-color:#c8102e;color:#fff}
+.fr-arrow div{color:#c8102e;font-size:20px;text-align:center;text-shadow:0 0 3px #fff}
+</style>"""
+
     def page_harita(g):
         body = (
-            "<h1>Harita</h1>"
+            FR_CSS + '<h1>Harita</h1><div id="frwrap">'
             '<div class="card fgrid">'
-            '<div class="field grow"><label>Filo kodu, plaka, model veya hat (arama)</label><input id="q" placeholder="09-524 · 590 · Lion" autocomplete="off"></div>'
-            '<div class="field"><label>Tam hat</label><input id="hat" placeholder="590" autocomplete="off"></div>'
+            '<div class="field grow"><label>Filo kodu, plaka, model veya hat (arama)</label><input id="q" placeholder="' + esc(city_meta()["ornek"], True) + '" autocomplete="off"></div>'
+            '<div class="field"><label>Tam hat</label><input id="hat" placeholder="' + esc(city_meta()["hat_ornek"].split(" ")[0], True) + '" autocomplete="off"></div>'
             + ('<div class="field"><label>İşletme</label><select id="op"><option value="">Tümü</option><option value="ego">EGO</option>'
                '<option value="oho">ÖHO / Halk otobüsü (06 HO)</option></select></div>' if cur_city() == "ankara"
                else '<input type="hidden" id="op" value="">')
@@ -1596,10 +1683,11 @@ load();loadStops();setInterval(load,60000);
                '<option value="Solo">Solo</option></select></div>' if cur_city() == "ankara" else '<input type="hidden" id="tip" value="">') +
             '<div class="field"><label>Son kaç saat</label><input id="saat" type="number" value="24" min="1" max="168"></div>'
             '<div class="field"><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;color:var(--ink)"><input id="live" type="checkbox" style="width:auto"> yalnız canlı</label></div></div>'
-            '<div class="muted" id="cnt" style="margin:6px 2px 10px">Yükleniyor…</div>'
-            '<div id="map" style="height:68vh;isolation:isolate;min-height:360px;border-radius:16px;border:1px solid var(--line)"></div>'
-            '<p class="muted">Yeşil: son 15 dakikada görüldü. Gri: çalışmıyor veya veri yok, son bilinen konum. Kalabalık bölgelerde araçlar '
-            'sayıyla gruplanır; yaklaştıkça tek tek görünür. Veri taramalar arasında güncellenir (yaklaşık 1-5 dk). Yakınlaştırınca (15+) mavi duraklar görünür; tıklayınca hatlar ve adres açılır. Durak konumları araç verisinden tahmin edilir, EGO koordinat yayınlamaz.</p>'
+            '<div class="fr-bar"><span class="muted" id="cnt">Yükleniyor…</span><button type="button" id="full">⛶ Tam ekran</button></div>'
+            '<div class="fmap"><div id="map" style="height:68vh;isolation:isolate;min-height:360px;border-radius:16px;border:1px solid var(--line)"></div>'
+            '<div id="panel"></div></div></div>'
+            '<p class="muted">Araca tıklayınca sağda ayrıntılar ve bugünkü seferlerin izi açılır; ▲ oku aracın gittiği yönü gösterir. Yeşil: son 15 dakikada görüldü. Gri: çalışmıyor veya veri yok, son bilinen konum. Kalabalık bölgelerde araçlar '
+            'sayıyla gruplanır; yaklaştıkça tek tek görünür. Veri taramalar arasında güncellenir (yaklaşık 1-5 dk). Yakınlaştırınca (15+) mavi duraklar görünür. Kısayol: Esc paneli kapatır.</p>'
             '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">'
             '<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">'
             '<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">'
@@ -1771,6 +1859,8 @@ load();loadStops();setInterval(load,60000);
                     return self._send(api_canli(g), "application/json; charset=utf-8")
                 if u.path == "/api/duraklar":
                     return self._send(api_duraklar(g), "application/json; charset=utf-8")
+                if u.path == "/api/arac_iz":
+                    return self._send(api_arac_iz(g), "application/json; charset=utf-8")
                 if u.path == "/api/araclar":
                     return self._send(api_araclar(g), "application/json; charset=utf-8")
                 if u.path == "/gun":
