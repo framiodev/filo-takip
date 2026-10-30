@@ -116,6 +116,29 @@ Persistent=true
 [Install]
 WantedBy=timers.target
 UNIT
+cat > /etc/systemd/system/filo-foto.service <<UNIT
+[Unit]
+Description=Ulasim Arsiv forum fotograf taramasi
+[Service]
+Type=oneshot
+User=filo
+WorkingDirectory=$APP
+Environment=LC_ALL=C.UTF-8 PYTHONIOENCODING=utf-8
+ExecStart=/usr/bin/python3 forum_foto.py --sehir ankara
+ExecStart=-/usr/bin/python3 forum_foto.py --sehir istanbul
+ExecStart=-/usr/bin/python3 forum_foto.py --sehir izmir
+Nice=15
+UNIT
+cat > /etc/systemd/system/filo-foto.timer <<UNIT
+[Unit]
+Description=12 saatte bir forum fotograf taramasi
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=12h
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
 cat > /etc/systemd/system/filo-yedek.service <<UNIT
 [Unit]
 Description=Veritabani yedegi
@@ -181,7 +204,7 @@ echo "== Güvenlik duvarı"
 ufw allow OpenSSH >/dev/null; ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null; ufw --force enable >/dev/null
 
 systemctl daemon-reload
-systemctl enable --now filo-web filo-toplayici filo-referans.timer filo-yedek.timer filo-guncelle.timer
+systemctl enable --now filo-web filo-toplayici filo-referans.timer filo-foto.timer filo-yedek.timer filo-guncelle.timer
 systemctl restart caddy
 sleep 3
 echo; echo "== Durum"
