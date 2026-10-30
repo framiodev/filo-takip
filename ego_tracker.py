@@ -1019,9 +1019,10 @@ def stop_passages(samples, route):
         k = int(p0) + 1
         while k <= p1:
             if k > p0:
-                t = t0 + (k - p0) / (p1 - p0) * (t1 - t0)
+                gercek = (p1 - p0) <= 1.0 and (t1 - t0) <= 150  # tek durak atladı, ardışık taramada yakalandı
+                t = t1 if gercek else t0 + (k - p0) / (p1 - p0) * (t1 - t0)
                 durak, ad = route.get(k, ("", ""))
-                out.append({"sira": k, "durak": durak, "ad": ad, "t": int(t)})
+                out.append({"sira": k, "durak": durak, "ad": ad, "t": int(t), "gercek": gercek})
             k += 1
     return out
 

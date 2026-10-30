@@ -447,7 +447,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
                 sira = f" · durak {s0['sira']} → {s1['sira']}" if s0["sira"] is not None and s1["sira"] is not None else ""
                 summary = (f'<span class="badge">Sefer {i}</span><b>Hat {esc(tr["hat"])}</b>'
                            f'<span class="muted">{esc(tr["ad"])}</span>'
-                           f'<span class="time">{fmt(s0["t"])} – {fmt(s1["t"])}</span>')
+                           f'<span class="time" title="Aracın bu hatta ilk görüldüğü saat">▶ {fmt(s0["t"])}</span>')
                 obs = []
                 for s in ([s0, s1] if len(tr["samples"]) > 1 else [s0]):
                     if s["sira"] is not None:
@@ -460,9 +460,11 @@ document.querySelectorAll('.vmap').forEach(function(el){
                 if tr["passages"]:
                     rows = "".join(
                         f'<tr><td>{p["sira"]}</td><td>{esc(p["durak"])}</td><td>{esc(p["ad"])}</td>'
-                        f'<td><b>~{fmt(p["t"])}</b></td></tr>' for p in tr["passages"])
+                        f'<td><b>{"" if p.get("gercek") else "~"}{fmt(p["t"])}</b></td></tr>' for p in tr["passages"])
                     table = ('<div class="scroll"><table><thead><tr><th>#</th><th>Durak no</th><th>Durak</th>'
-                             f'<th>Tahmini geçiş</th></tr></thead><tbody>{rows}</tbody></table></div>')
+                             f'<th>Geçiş saati</th></tr></thead><tbody>{rows}</tbody></table></div>'
+                             '<p class="muted" style="font-size:.8rem">Başında ~ olmayan saatler, aracın o durağı geçtiği tarama anında yakalanmıştır (en fazla ~1 dk sapma). '
+                             '~ ile başlayanlar, tarama arasında kalan duraklar için ara değerle tahmin edilmiştir.</p>')
                 else:
                     table = '<p class="muted">Durak geçişi tahmini için yeterli gözlem yok.</p>'
                 open_attr = " open" if i == 1 or len(trips) <= 3 else ""
