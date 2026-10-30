@@ -362,6 +362,9 @@ check("hat: arama", "Duraklar" in _get("/hat?q=481"))
 check("hat: bilinmeyen", "Hat bulunamadı" in _get("/hat?no=ZZZ"))
 check("durak sayfası XSS kaçışlı", "<script>" not in _get("/durak?q=%3Cscript%3E"))
 
+check("gün: hat adıyla arama", "Hat 481" in _get("/gun?tarih=2026-11-02&hat=uyan%C4%B1%C5%9F") and "Hat 523-6" not in _get("/gun?tarih=2026-11-02&hat=uyan%C4%B1%C5%9F"))
+check("gün: hat önerileri", 'datalist id="hatlist"' in _get("/gun"))
+
 # hepsi: tek komutla toplayıcı + arayüz (mevcut DB hazır olduğu için init atlanır)
 import socket
 s = socket.socket(); s.bind(("127.0.0.1", 0)); hp = s.getsockname()[1]; s.close()

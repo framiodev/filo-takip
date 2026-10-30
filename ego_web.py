@@ -983,12 +983,22 @@ document.querySelectorAll('.vmap').forEach(function(el){
             sql = ("SELECT hat, plaka, MAX(arac_no), MIN(first_ts), MAX(last_ts) FROM stints "
                    "WHERE last_ts>=? AND first_ts<? ")
             args = [start, end]
-            if hat:
-                sql += "AND hat=? "
-                args.append(hat)
             sql += "GROUP BY hat, plaka"
             rows = conn.execute(sql, args).fetchall()
             names = {r[0]: r[1] for r in conn.execute("SELECT hat, ad FROM lines")}
+        finally:
+            conn.close()
+        if hat:
+            def _tl(x):
+                return (x or "").replace("İ", "i").replace("I", "ı").lower()
+            hq = _tl(hat)
+            ok_h = {h for h in {r[0] for r in rows}
+                    if _tl(h) == hq or _tl(h).startswith(hq + "-") or hq in _tl(names.get(h, ""))}
+            rows = [r for r in rows if r[0] in ok_h]
+        hat_opts = "".join(f'<option value="{esc(h, True)}">{esc(n)}</option>' for h, n in sorted(names.items(), key=lambda x: natural_key(x[0])))
+        conn = E.connect()
+        try:
+            pass
         finally:
             conn.close()
         by_hat = {}
@@ -996,7 +1006,8 @@ document.querySelectorAll('.vmap').forEach(function(el){
             by_hat.setdefault(h, []).append((a, plaka, arac, b))
         form = ('<form class="card form two" method="get" action="/gun">'
                 f'<div class="field"><label>Tarih</label><input type="date" name="tarih" value="{esc(day.isoformat(), True)}"></div>'
-                f'<div class="field"><label>Hat (boşsa tümü)</label><input name="hat" value="{esc(hat, True)}" placeholder="590" autocomplete="off"></div>'
+                f'<div class="field"><label>Hat no veya güzergâh adı (boşsa tümü)</label><input name="hat" list="hatlist" value="{esc(hat, True)}" placeholder="590 · Kızılay · Batıkent" autocomplete="off"></div>'
+                f'<datalist id="hatlist">{hat_opts}</datalist>'
                 '<button class="btn">Göster</button></form>')
         body = "<h1>Gün özeti</h1>" + form
         total = sum(len(v) for v in by_hat.values())
