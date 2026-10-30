@@ -154,7 +154,7 @@ DESK_ONLY = {"/raporlar", "/modeller", "/hatlar"}  # dar ekranda alt çubuktan g
 # Şehir kayıt defteri: yeni şehir eklemek için buraya satır ekle ve toplayıcı bağdaştırıcısını yaz.
 CITIES = [
     {"id": "ankara", "ad": "Ankara", "kurum": "EGO Genel Müdürlüğü", "aktif": True},
-    {"id": "istanbul", "ad": "İstanbul", "kurum": "İETT · İBB", "aktif": False},
+    {"id": "istanbul", "ad": "İstanbul", "kurum": "İETT · İBB", "aktif": False, "db": "IETT_DB"},
     {"id": "izmir", "ad": "İzmir", "kurum": "ESHOT · İzmir Büyükşehir", "aktif": False},
 ]
 CITY_BY_ID = {c["id"]: c for c in CITIES}
@@ -183,6 +183,18 @@ def natural_key(s):
 
 
 def make_handler(E):
+
+    IST_DB = os.environ.get("IETT_DB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "iett_filo.db"))
+    CITY_BY_ID["istanbul"]["aktif"] = os.path.exists(IST_DB)
+
+    def cur_city():
+        return getattr(E.CITY_CTX, "city", "ankara")
+
+    def live_rows(*a, **k):
+        """EGO canlı API'si yalnız Ankara için; İstanbul'da canlı sorgu yok."""
+        if cur_city() != "ankara":
+            return None
+        return E.api_rows(*a, **k)
     TZ = E.TZ
     _models = {"mt": None, "rules": []}
 
@@ -270,7 +282,7 @@ def make_handler(E):
             nav = "".join(
                 f'<a href="{h}" class="{"on" if h == active else ""}{" desk" if h in DESK_ONLY else ""}"><i>{ic}</i><span>{esc(t)}</span></a>'
                 for h, t, ic in TABS)
-            chip = '<a class="citychip" href="/sehir" title="Şehri değiştir">📍 Ankara ▾</a>'
+            chip = '<a class="citychip" href="/sehir" title="Şehri değiştir">📍 %s ▾</a>' % esc(CITY_BY_ID[cur_city()]["ad"])
             status = status_chip()
         return (
             '<!doctype html><html lang="tr"><head><meta charset="utf-8">'
@@ -721,7 +733,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
                 % ",".join("?" * len(hats)), (now - 3600, *hats)).fetchall() if hats else []
         finally:
             conn.close()
-        rows = E.api_rows(E.Http(False), "Otobusler", DURAK=no)
+        rows = live_rows(E.Http(False), "Otobusler", DURAK=no)
         yak, nxt = [], {}
         for r in rows or []:
             hat = E.sv(r, "hat_kisa_kod") or E.sv(r, "hat_no")
@@ -854,7 +866,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         if not ad and not route:
             return layout("/hat", body + '<div class="card empty">Hat bulunamadı.</div>', "Hat · Filo Takip")
         live = {}
-        rows = E.api_rows(E.Http(False), "Otobus", HAT=hat, DURAK=route[0][1]) if route else None
+        rows = live_rows(E.Http(False), "Otobus", HAT=hat, DURAK=route[0][1]) if route else None
         for r in rows or []:
             if E.is_live(r):
                 live.setdefault(E.to_int(E.sv(r, "durak_sira_no")), []).append(r)
@@ -1096,7 +1108,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
             conn.close()
         c = json.loads(last[0]) if last else None
         try:
-            mb = round(os.path.getsize(E.DB_PATH) / 1048576, 1)
+            mb = round(os.path.getsize(getattr(E.CITY_CTX, "db", None) or E.DB_PATH) / 1048576, 1)
         except OSError:
             mb = 0
         days = max(1, round((E.now_ts() - int(first[0])) / 86400, 1)) if first else 0
@@ -1115,7 +1127,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         grid = "".join(f"<div><b>{esc(v)}</b><span>{esc(k)}</span></div>" for v, k in cells)
         body = ("<h1>Durum</h1>" + f'<div class="card"><div class="kv">{grid}</div></div>'
                 '<div class="dnav"><a href="/raporlar">Günlük raporlar</a><a href="/sehir">Şehir değiştir</a></div>'
-                f'<p class="muted">Veritabanı: {esc(E.DB_PATH)}</p>')
+                f'<p class="muted">Veritabanı: {esc(getattr(E.CITY_CTX, "db", None) or E.DB_PATH)}</p>')
         return layout("/durum", body + '<i data-live="30" hidden></i>', "Durum · EGO Filo Takip")
 
 
@@ -1171,7 +1183,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         http = E.Http(False)
         rows = None
         for st in stops[:2]:
-            rows = E.api_rows(http, "Otobus", HAT=hat, DURAK=st)
+            rows = live_rows(http, "Otobus", HAT=hat, DURAK=st)
             if rows is not None:
                 break
         if rows is None:
@@ -1428,7 +1440,13 @@ load();loadStops();setInterval(load,60000);
                 v = ""
             return v if v in CITY_BY_ID and CITY_BY_ID[v]["aktif"] else ""
 
+        def _set_city(self):
+            c = self._sehir() or "ankara"
+            E.CITY_CTX.city = c
+            E.CITY_CTX.db = IST_DB if c == "istanbul" else None
+
         def do_GET(self):
+            self._set_city()
             u = urllib.parse.urlparse(self.path)
             qs = urllib.parse.parse_qs(u.query)
 

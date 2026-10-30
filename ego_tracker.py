@@ -302,8 +302,11 @@ CREATE INDEX IF NOT EXISTS ix_line_times ON line_times (hat, gun);
 """
 
 
+CITY_CTX = threading.local()  # web isteği başına şehir veritabanı yolu (ego_web ayarlar)
+
+
 def connect(path=None):
-    conn = sqlite3.connect(path or DB_PATH, timeout=30)
+    conn = sqlite3.connect(path or getattr(CITY_CTX, "db", None) or DB_PATH, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
     # Eski sürümle oluşturulmuş veritabanlarına yeni sütunları ekle
