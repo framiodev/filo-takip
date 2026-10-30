@@ -479,7 +479,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
                              '~ ile başlayanlar, tarama arasında kalan duraklar için ara değerle tahmin edilmiştir.</p>')
                 else:
                     table = '<p class="muted">Durak geçişi tahmini için yeterli gözlem yok.</p>'
-                open_attr = " open" if i == 1 or len(trips) <= 3 else ""
+                open_attr = ""  # seferler kapalı gelir; kullanıcı kendisi açar
                 parts.append(f'<details class="trip"{open_attr}><summary>{summary}</summary>'
                              f'<div class="tbody">{meta}{obs_html}{table}</div></details>')
             out.append('<div class="card">' + "".join(parts) + "</div>")
