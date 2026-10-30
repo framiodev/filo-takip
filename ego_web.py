@@ -150,7 +150,7 @@ MANIFEST = {
 
 TABS = [("/", "Sorgula", "🔍"), ("/harita", "Harita", "🗺️"), ("/gun", "Gün özeti", "📅"), ("/durak", "Durak", "🚏"), ("/hat", "Hat", "🚍"), ("/hatlar", "İlk hatlar", "📊"), ("/modeller", "Modeller", "🚌"), ("/raporlar", "Raporlar", "📄"), ("/durum", "Durum", "📶")]
 
-DESK_ONLY = {"/raporlar", "/modeller", "/hatlar"}  # dar ekranda alt çubuktan gizlenir (Durum sayfasından erişilir)
+DESK_ONLY = {"/raporlar", "/modeller", "/hatlar", "/eslesme"}  # dar ekranda alt çubuktan gizlenir (Durum sayfasından erişilir)
 
 # Şehir kayıt defteri: yeni şehir eklemek için buraya satır ekle ve toplayıcı bağdaştırıcısını yaz.
 CITIES = [
@@ -317,7 +317,7 @@ def make_handler(E):
         else:
             nav = "".join(
                 f'<a href="{h}" class="{"on" if h == active else ""}{" desk" if h in DESK_ONLY else ""}"><i>{ic}</i><span>{esc(t)}</span></a>'
-                for h, t, ic in TABS)
+                for h, t, ic in (TABS + ([("/eslesme", "Eşleme", "🔗")] if cur_city() == "izmir" else [])))
             chip = '<a class="citychip" href="/sehir" title="Şehri değiştir">📍 %s ▾</a>' % esc(CITY_BY_ID[cur_city()]["ad"])
             status = status_chip()
         return localize(
@@ -492,7 +492,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         for v in res["vehicles"]:
             trips = v["trips"]
             parts = [f'<div class="vhead"><span class="plate">{esc(E.pretty_plate(v["plaka"]))}</span>'
-                     f'<span class="chip">Filo {esc(v["arac_no"] or "-")}</span>'
+                     f'<span class="chip">Filo {esc(v["arac_no"] or "-")}</span>{eslesme_chip(v["plaka"])}'
                      f'{model_chip(v["arac_no"], v["plaka"])}'
                      f'<span class="muted">{len(trips)} sefer · {esc(res["day"].strftime("%d.%m.%Y"))}</span>'
                      f'{vehicle_status(v["plaka"])}</div>']
@@ -542,7 +542,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         out.append(note(f'{fmt(res["when"], True)} çevresinde ±{res["tol_min"]} dk', "info"))
         for v in res["vehicles"]:
             parts = [f'<div class="vhead"><span class="plate">{esc(E.pretty_plate(v["plaka"]))}</span>'
-                     f'<span class="chip">Filo {esc(v["arac_no"] or "-")}</span></div>']
+                     f'<span class="chip">Filo {esc(v["arac_no"] or "-")}</span>{eslesme_chip(v["plaka"])}</div>']
             parts.append(vehicle_map(v, False, v["items"]))
             if v["items"]:
                 rows = ""
@@ -837,6 +837,108 @@ document.querySelectorAll('.vmap').forEach(function(el){
         _iz_cache[durak] = (time.time(), out)
         return out
 
+    # ------------------------------------------------------------------ İzmir: elle plaka eşleme (araç no <-> plaka / filo kodu)
+    ESLESME_PAROLA = os.environ.get("ESLESME_PAROLA", "")
+    _RE_PLAKA = re.compile(r"\b(\d{2})\s*([A-Za-zÇĞİÖŞÜçğıöşü]{1,3})\s*(\d{2,4})\b")
+    _RE_FILO = re.compile(r"\b(\d{2})\s*-\s*(\d{1,3})\b")
+
+    def eslesme_init(conn):
+        conn.execute("CREATE TABLE IF NOT EXISTS eslesme (arac_no TEXT PRIMARY KEY, plaka TEXT, filo TEXT, ts INTEGER)")
+
+    def eslesme_map():
+        """{arac_no: (plaka, filo)}; tablo yoksa boş."""
+        if cur_city() != "izmir":
+            return {}
+        conn = E.connect()
+        try:
+            eslesme_init(conn)
+            return {r[0]: (r[1] or "", r[2] or "") for r in conn.execute("SELECT arac_no, plaka, filo FROM eslesme")}
+        except Exception:  # noqa: BLE001
+            return {}
+        finally:
+            conn.close()
+
+    def eslesme_chip(arac_no, mp=None):
+        v = (mp if mp is not None else eslesme_map()).get(str(arac_no))
+        if not v:
+            return ""
+        out = ""
+        if v[0]:
+            out += f'<span class="plate">{esc(E.pretty_plate(E.norm(v[0])))}</span>'
+        if v[1]:
+            out += f'<span class="chip">Filo {esc(v[1])}</span>'
+        return out
+
+    def save_eslesme(conn, arac_no, plaka, filo):
+        arac_no = E.norm(arac_no)
+        if not arac_no or not (plaka or filo):
+            return False
+        pl = E.norm(plaka)
+        eslesme_init(conn)
+        conn.execute("INSERT OR REPLACE INTO eslesme (arac_no, plaka, filo, ts) VALUES (?,?,?,?)",
+                     (arac_no, pl, (filo or "").strip(), E.now_ts()))
+        for alias in (pl, E.norm(filo)):
+            if alias and alias != arac_no:
+                conn.execute("INSERT OR REPLACE INTO aliases (alias, plaka) VALUES (?,?)", (alias, arac_no))
+        return True
+
+    def parse_eslesme_line(line):
+        """'2051 35 AS 8162 16-005' -> (arac_no, plaka, filo); ayraç olarak ; veya , da olur."""
+        line = line.strip()
+        if not line:
+            return None
+        m = re.match(r"^\s*(\d{1,6})\b[\s;,]*(.*)$", line)
+        if not m:
+            return None
+        rest = m.group(2)
+        filo = ""
+        fm = _RE_FILO.search(rest)
+        if fm:
+            filo = "%s-%s" % (fm.group(1), fm.group(2).zfill(3))
+            rest = rest[:fm.start()] + " " + rest[fm.end():]
+        pm = _RE_PLAKA.search(rest)
+        plaka = ("%s %s %s" % (pm.group(1), pm.group(2).upper(), pm.group(3))) if pm else ""
+        return (m.group(1), plaka, filo) if (plaka or filo) else None
+
+    def page_eslesme(g, msg=""):
+        body = "<h1>Araç eşleme</h1>"
+        if cur_city() != "izmir":
+            return layout("/eslesme", body + note("Bu sayfa yalnızca İzmir için kullanılır: İzmir'in canlı servisi plaka vermez, "
+                                                  "araç numarası ile plakayı burada elle eşleriz.", "info"), "Eşleme · Filo Takip")
+        if msg:
+            body += note(msg, "info")
+        mp = eslesme_map()
+        conn = E.connect()
+        try:
+            seen = conn.execute("SELECT plaka, MAX(last_ts) FROM stints GROUP BY plaka ORDER BY MAX(last_ts) DESC LIMIT 8").fetchall()
+        finally:
+            conn.close()
+        kilit = ("" if ESLESME_PAROLA else
+                 note("Kayıt ekleme kapalı: sunucuda ESLESME_PAROLA tanımlanmamış. Kayıtlar herkese açık görünür, ekleme yalnızca parola ile yapılır."))
+        par = '<div class="field"><label>Parola</label><input name="parola" type="password" autocomplete="off"></div>'
+        body += note("İzmir'in resmi servisi plaka vermiyor. Burada bildiğiniz araç numarası ↔ plaka eşleşmeleri saklanır; "
+                     "kayıtlı araçlarda plaka ve filo kodu sorgu, durak ve hat sayfalarında görünür, plaka ya da filo koduyla arama da çalışır.", "info")
+        body += kilit
+        body += ('<form class="card form" method="post" action="/eslesme/kaydet"><div class="field"><label>Araç no (uygulamadaki/sitedeki)</label>'
+                 '<input name="arac_no" placeholder="ör. 2051" autocomplete="off"></div>'
+                 '<div class="field"><label>Plaka</label><input name="plaka" placeholder="ör. 35 AS 8162" autocomplete="off"></div>'
+                 '<div class="field"><label>Filo kodu (isteğe bağlı)</label><input name="filo" placeholder="ör. 16-005" autocomplete="off"></div>'
+                 + par + '<button class="btn">Kaydet</button></form>')
+        body += ('<details class="card"><summary><b>Toplu ekle</b> (her satır: araç no, plaka, filo kodu)</summary>'
+                 '<form method="post" action="/eslesme/toplu"><textarea name="metin" rows="6" style="width:100%;margin-top:10px;padding:10px;'
+                 'border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)" placeholder="2051 35 AS 8162 16-005&#10;11220 35 DA 7587"></textarea>'
+                 + par + '<button class="btn" style="margin-top:10px">İçe aktar</button></form></details>')
+        rows = "".join(
+            '<tr><td><a href="/?q=%s"><b>%s</b></a></td><td>%s</td><td>%s</td>'
+            '<td><form method="post" action="/eslesme/sil" style="margin:0"><input type="hidden" name="arac_no" value="%s">'
+            '<input name="parola" type="password" placeholder="parola" style="width:90px"> <button class="btn" style="padding:4px 10px">Sil</button></form></td></tr>'
+            % (urllib.parse.quote(a), esc(a), esc(E.pretty_plate(E.norm(v[0])) if v[0] else "-"), esc(v[1] or "-"), esc(a, True))
+            for a, v in sorted(mp.items(), key=lambda kv: kv[0]))
+        body += ('<div class="card"><div class="vhead"><b>Kayıtlı eşleşmeler (%d)</b></div>' % len(mp)
+                 + ('<table><thead><tr><th>Araç no</th><th>Plaka</th><th>Filo kodu</th><th></th></tr></thead><tbody>%s</tbody></table>' % rows
+                    if rows else '<div class="muted">Henüz kayıt yok.</div>') + '</div>')
+        return layout("/eslesme", body, "Eşleme · Filo Takip")
+
     def page_durak_izmir(g):
         no, q = g("no"), g("q")
         form = ('<form class="card form" method="get" action="/durak"><div class="field"><label>Durak adı veya numarası</label>'
@@ -879,12 +981,13 @@ document.querySelectorAll('.vmap').forEach(function(el){
             body += '<div class="card empty">Şu an bu durağa yaklaşan canlı araç görünmüyor.</div>'
         else:
             tr = ""
+            emp = eslesme_map()
             for y in rows:
                 kalan = "" if y["kalan"] is None else (f'{y["kalan"]} durak kaldı' if y["kalan"] > 0 else "durağa geliyor")
                 rozet = ("♿ " if y["eng"] else "") + ("🚲" if y["bis"] else "")
                 tr += (f'<tr><td><a href="/hat?no={urllib.parse.quote(y["hat"])}"><b>{esc(y["hat"])}</b></a>'
                        f'<div class="muted" style="font-size:.78rem">{esc(y["ad"])}</div></td>'
-                       f'<td><a href="/?q={urllib.parse.quote(y["id"])}"><b>{esc(y["id"])}</b></a></td>'
+                       f'<td><a href="/?q={urllib.parse.quote(y["id"])}"><b>{esc(y["id"])}</b></a><div>{eslesme_chip(y["id"], emp)}</div></td>'
                        f'<td><b>{"-" if y["m"] is None else str(y["m"]) + " m"}</b><div class="muted" style="font-size:.78rem">{esc(kalan)}</div></td>'
                        f'<td>{rozet}</td></tr>')
             body += ('<div class="card"><div class="vhead"><b>Yaklaşan araçlar</b><span class="muted">canlı · resmi servis</span></div>'
@@ -1611,6 +1714,8 @@ load();loadStops();setInterval(load,60000);
                                       extra={"Content-Disposition": f'attachment; filename="{name}"'})
                 if u.path == "/modeller":
                     return self._send(page_modeller(g, "Kaydedildi." if g("ok") else ""))
+                if u.path == "/eslesme":
+                    return self._send(page_eslesme(g, {"1": "Kaydedildi.", "0": "Parola yanlış ya da kayıt kapalı."}.get(g("ok"), "")))
                 if u.path == "/harita":
                     return self._send(page_harita(g))
                 if u.path == "/api/canli":
@@ -1666,6 +1771,33 @@ load();loadStops();setInterval(load,60000);
             n = 0
         form = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "replace"))
         f = lambda k: (form.get(k, [""])[0] or "").strip()
+        if u.path.startswith("/eslesme/"):
+            self._set_city()
+            if cur_city() != "izmir" or not ESLESME_PAROLA or f("parola") != ESLESME_PAROLA:
+                return self._redirect("/eslesme?ok=0")
+            conn = E.connect()
+            try:
+                if u.path == "/eslesme/kaydet":
+                    save_eslesme(conn, f("arac_no"), f("plaka"), f("filo"))
+                elif u.path == "/eslesme/toplu":
+                    for line in f("metin").splitlines()[:2000]:
+                        r = parse_eslesme_line(line)
+                        if r:
+                            save_eslesme(conn, *r)
+                elif u.path == "/eslesme/sil":
+                    a = E.norm(f("arac_no"))
+                    eslesme_init(conn)
+                    old = conn.execute("SELECT plaka, filo FROM eslesme WHERE arac_no=?", (a,)).fetchone()
+                    conn.execute("DELETE FROM eslesme WHERE arac_no=?", (a,))
+                    for al in (old or ()):
+                        if al:
+                            conn.execute("DELETE FROM aliases WHERE alias=? AND plaka=?", (E.norm(al), a))
+                else:
+                    return self._send("Bulunamadı", code=404)
+                conn.commit()
+            finally:
+                conn.close()
+            return self._redirect("/eslesme?ok=1")
         conn = E.connect()
         try:
             conn.execute("CREATE TABLE IF NOT EXISTS arac_bilgi (anahtar TEXT PRIMARY KEY, marka_model TEXT, "

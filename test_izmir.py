@@ -69,7 +69,9 @@ ok(len(v) == 1 and v[0]["id"] == "2212" and abs(v[0]["lat"] - 38.47509333) < 1e-
 ok(Z.main(["run", "--once", "--delay", "0"]) == 0, "run --once")
 ok(c.execute("SELECT COUNT(*) FROM stints WHERE hat='446'").fetchone()[0] == 1, "stint kaydı")
 # --- web: İzmir Durak sayfası (yaklaşan araçlar)
+import urllib.parse
 import urllib.request
+import urllib.error
 import ego_web as W
 YAK = [{"HatNumarasi": 446, "HatAdi": "TEST", "OtobusId": 2212, "KalanDurakSayisi": 2, "HattinYonu": 1, "KoorX": "38,4110", "KoorY": "27,1230", "EngelliMi": True, "BisikletAparatliMi": False},
        {"HatNumarasi": 5, "HatAdi": "BES", "OtobusId": 777, "KalanDurakSayisi": 0, "HattinYonu": 0, "KoorX": "38,4101", "KoorY": "27,1200"}]
@@ -88,5 +90,38 @@ html_ = urllib.request.urlopen(rq).read().decode()
 ok("Yaklaşan araçlar" in html_ and "2212" in html_ and "777" in html_, "İzmir durak sayfası yaklaşan araçları gösteriyor")
 ok(html_.index("777") < html_.index("2212"), "yakın olan (777) önce sıralı")
 ok("Ankara" not in html_ and "EGO" not in html_, "İzmir durak sayfasında Ankara/EGO kalıntısı yok")
+# --- elle eşleme
+os.environ["ESLESME_PAROLA"] = "gizli"
+web2 = Z.E.ThreadingHTTPServer(("127.0.0.1", 0), Z.E.make_handler())
+threading.Thread(target=web2.serve_forever, daemon=True).start()
+B2 = "http://127.0.0.1:%d" % web2.server_address[1]
+class _NoRedir(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+_op = urllib.request.build_opener(_NoRedir)
+def post(path, data):
+    rq = urllib.request.Request(B2 + path, data=urllib.parse.urlencode(data).encode(), method="POST")
+    rq.add_header("Cookie", "sehir=izmir"); rq.add_header("Origin", B2)
+    try:
+        return _op.open(rq).status, ""
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("Location", "")
+def get(path):
+    rq = urllib.request.Request(B2 + path); rq.add_header("Cookie", "sehir=izmir")
+    return urllib.request.urlopen(rq).read().decode()
+st, loc = post("/eslesme/kaydet", {"arac_no": "2212", "plaka": "35 as 8162", "filo": "16-5", "parola": "yanlis"})
+ok(loc.endswith("ok=0"), "yanlış parola reddedildi")
+st, loc = post("/eslesme/toplu", {"metin": "2212 35 as 8162 16-005\n777 35 DA 7587\nçöp satır", "parola": "gizli"})
+ok(loc.endswith("ok=1"), "toplu kayıt yapıldı")
+pg = get("/eslesme")
+ok("<b>2212</b>" in pg and "<b>777</b>" in pg and "<td>16-005</td>" in pg, "eşleme sayfası kayıtları listeliyor")
+q = get("/?q=35+AS+8162")
+ok("2212" in q, "plaka ile arama araç numarasına çözüldü")
+q2 = get("/?q=16-005")
+ok("2212" in q2, "filo kodu ile arama araç numarasına çözüldü")
+dp = get("/durak?no=10005")
+ok("AS 8162" in dp, "durak tablosunda plaka görünüyor")
+post("/eslesme/sil", {"arac_no": "2212", "parola": "gizli"})
+ok("<b>2212</b>" not in get("/eslesme") and "<b>777</b>" in get("/eslesme"), "silme çalıştı")
 print("\nSONUÇ:", "TÜM TESTLER GEÇTİ" if not fail else f"{fail} HATA")
 sys.exit(1 if fail else 0)
