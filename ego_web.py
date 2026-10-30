@@ -1446,12 +1446,29 @@ document.querySelectorAll('.vmap').forEach(function(el){
         out = []
         v = res["vehicles"][0] if res["vehicles"] else None
         for tr in (v["trips"] if v else []):
-            pts = [[round(x["lat"], 5), round(x["lng"], 5), fmt(x["t"], False), x.get("hiz") or ""]
+            pts = [[round(x["lat"], 5), round(x["lng"], 5), fmt(x["t"], False), x.get("hiz") or "", x.get("sira")]
                    for x in tr["samples"] if x["lat"] and x["lng"]]
             if pts:
                 out.append({"h": tr["hat"], "ad": tr.get("ad", ""), "t0": fmt(tr["samples"][0]["t"], False),
                             "t1": fmt(tr["samples"][-1]["t"], False), "p": pts})
         return json.dumps({"seferler": out}, ensure_ascii=False)
+
+    def api_hat_rota(g):
+        """Hattın durak sırasına göre rotası: [[enlem, boylam, sira, ad]]; konumu bilinen duraklar."""
+        hat = g("hat")
+        if not hat:
+            return json.dumps({"rota": []})
+        conn = E.connect()
+        try:
+            rows = conn.execute("SELECT sira, durak, ad FROM line_route WHERE hat=? ORDER BY sira", (hat,)).fetchall()
+            pos = {d: (la, lo) for d, la, lo in conn.execute("SELECT durak, lat, lng FROM stop_pos")}
+            if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='stops_geo'").fetchone():
+                for d, la, lo in conn.execute("SELECT durak, lat, lng FROM stops_geo"):
+                    pos[d] = (la, lo)  # resmi koordinat tahminin önüne geçer
+        finally:
+            conn.close()
+        rota = [[round(pos[d][0], 5), round(pos[d][1], 5), sr, ad or ""] for sr, d, ad in rows if d in pos and pos[d][0]]
+        return json.dumps({"rota": rota}, ensure_ascii=False)
 
     CANLI_CACHE = {}
 
@@ -1548,15 +1565,20 @@ function head(a){
 }
 function closePanel(){panel.style.display='none';trail.clearLayers();if(selM&&selA){styleOf(selM,selA,false);}selM=selA=null;}
 function styleOf(m,a,on){var live=a.age<=15;m.setStyle(on?{radius:10,color:'#fff',weight:3,fillColor:'#c8102e',fillOpacity:1}:{radius:live?7:5,color:live?'#166534':'#6b7280',fillColor:live?'#22c55e':'#9ca3af',fillOpacity:live?.9:.6,weight:1});}
-function drawTrail(j,sel){
- trail.clearLayers();var tr=(j&&j.seferler)||[],all=[];
- tr.forEach(function(t,i){
-  var c=tcols[i%tcols.length],last=(i===sel),ll=t.p.map(function(x){return [x[0],x[1]];});all=all.concat(ll);
-  L.polyline(ll,{color:c,weight:last?5:3,opacity:last?.9:.4,dashArray:last?null:'5 7'}).addTo(trail).bindTooltip('Sefer '+(i+1)+' · Hat '+esc(t.h));
-  if(last){t.p.forEach(function(x){L.circleMarker([x[0],x[1]],{radius:3,color:c,weight:1,fillColor:c,fillOpacity:.9}).addTo(trail).bindTooltip(esc(x[2])+(x[3]?' · '+esc(x[3])+' km/sa':''));});
-   if(ll.length>1){var br=bearing(ll[ll.length-2],ll[ll.length-1]);L.marker(ll[ll.length-1],{icon:L.divIcon({className:'fr-arrow',html:'<div style="transform:rotate('+br+'deg)">▲</div>',iconSize:[22,22]}),interactive:false,keyboard:false}).addTo(trail);}}
- });
- return all;
+var rotaCache={};
+function getRota(h){
+ if(rotaCache[h])return Promise.resolve(rotaCache[h]);
+ return fetch('/api/hat_rota?hat='+encodeURIComponent(h)).then(function(r){return r.json()}).then(function(j){return (rotaCache[h]=j.rota||[]);}).catch(function(){return [];});
+}
+function drawTrip(t,i,rota){
+ trail.clearLayers();
+ var c=tcols[i%tcols.length],ll=t.p.map(function(x){return [x[0],x[1]];}),sr=t.p.map(function(x){return x[4];}).filter(function(v){return v!=null&&v!=='';}),seg=[];
+ if(rota&&rota.length&&sr.length){var lo=Math.min.apply(null,sr)-1,hi=Math.max.apply(null,sr);seg=rota.filter(function(r){return r[2]>=lo&&r[2]<=hi;}).map(function(r){return [r[0],r[1]];});}
+ var real=seg.length>=2,line=real?seg:ll;
+ L.polyline(line,{color:c,weight:5,opacity:.85,dashArray:real?null:'2 8'}).addTo(trail).bindTooltip('Sefer '+(i+1)+' · Hat '+esc(t.h)+(real?' · hat güzergâhı':' · gözlem noktaları'));
+ t.p.forEach(function(x){L.circleMarker([x[0],x[1]],{radius:3,color:'#fff',weight:1,fillColor:c,fillOpacity:1}).addTo(trail).bindTooltip(esc(x[2])+(x[3]?' · '+esc(x[3])+' km/sa':''));});
+ if(ll.length>1){var br=bearing(ll[ll.length-2],ll[ll.length-1]);L.marker(ll[ll.length-1],{icon:L.divIcon({className:'fr-arrow',html:'<div style="transform:rotate('+br+'deg)">▲</div>',iconSize:[22,22]}),interactive:false,keyboard:false}).addTo(trail);}
+ return {pts:line.concat(ll),real:real};
 }
 function openPanel(a,m){
  if(selM&&selA&&selM!==m)styleOf(selM,selA,false);
@@ -1570,10 +1592,15 @@ function openPanel(a,m){
   var tr=j.seferler||[],box=panel.querySelector('.fr-tr'),tabs=panel.querySelector('.fr-tabs');
   if(!tr.length){box.textContent='Bugün için sefer izi yok.';trail.clearLayers();return;}
   function pick(i){
-   var all=drawTrail(j,i);[].forEach.call(tabs.children,function(b,k){b.className=(k===i)?'on':'';});
-   var t=tr[i];box.innerHTML='<b>Sefer '+(i+1)+' · Hat '+esc(t.h)+'</b> <span class="muted">'+esc(t.ad||'')+'</span><br><span class="muted">'+esc(t.t0)+' – '+esc(t.t1)+' · '+t.p.length+' nokta</span>';
-   var pts=(i<0?all:t.p.map(function(x){return [x[0],x[1]];}));pts.push([a.la,a.lo]);
-   if(pts.length>1)map.fitBounds(pts,{padding:[60,60],maxZoom:15});
+   [].forEach.call(tabs.children,function(b,k){b.className=(k===i)?'on':'';});
+   var t=tr[i];
+   getRota(t.h).then(function(rota){
+    if(selA!==a)return;
+    var d=drawTrip(t,i,rota);
+    box.innerHTML='<b>Sefer '+(i+1)+' · Hat '+esc(t.h)+'</b> <span class="muted">'+esc(t.ad||'')+'</span><br><span class="muted">'+esc(t.t0)+' – '+esc(t.t1)+' · '+t.p.length+' gözlem · '+(d.real?'hat güzergâhı gösteriliyor':'bu hat için güzergâh yok, gözlem noktaları gösteriliyor')+'</span>';
+    var pts=d.pts.slice();pts.push([a.la,a.lo]);
+    if(pts.length>1)map.fitBounds(pts,{padding:[60,60],maxZoom:15});
+   });
   }
   tabs.innerHTML='';tr.forEach(function(t,i){var b=document.createElement('button');b.textContent='Sefer '+(i+1);b.title='Hat '+t.h+' · '+t.t0;b.onclick=function(){pick(i);};tabs.appendChild(b);});
   pick(tr.length-1);
@@ -1859,6 +1886,8 @@ load();loadStops();setInterval(load,60000);
                     return self._send(api_canli(g), "application/json; charset=utf-8")
                 if u.path == "/api/duraklar":
                     return self._send(api_duraklar(g), "application/json; charset=utf-8")
+                if u.path == "/api/hat_rota":
+                    return self._send(api_hat_rota(g), "application/json; charset=utf-8")
                 if u.path == "/api/arac_iz":
                     return self._send(api_arac_iz(g), "application/json; charset=utf-8")
                 if u.path == "/api/araclar":
