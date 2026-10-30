@@ -1,3 +1,4 @@
+from datetime import datetime
 """Sahte EGO sunucusuyla uçtan uca mantık testi (gerçek EGO'ya istek atmaz)."""
 import json
 import os
@@ -242,6 +243,22 @@ check("harita sayfası", "leaflet" in hp_ and 'id="map"' in hp_)
 check("harita: yan panel + tam ekran düğmesi", 'id="panel"' in hp_ and 'id="full"' in hp_ and "/api/arac_iz" in hp_)
 _iz = _j.loads(urllib.request.urlopen(f"http://127.0.0.1:{wp}/api/arac_iz?q=09-524").read().decode())
 check("araç iz API'si (seferler listesi)", isinstance(_iz.get("seferler"), list))
+_c = E.connect()
+_vq = (_c.execute("SELECT arac_no FROM sightings WHERE arac_no<>'' ORDER BY ts DESC LIMIT 1").fetchone() or [""])[0]
+_c.close()
+_izv = _j.loads(urllib.request.urlopen(f"http://127.0.0.1:{wp}/api/arac_iz?q={_vq}").read().decode()).get("seferler") if _vq else []
+if _izv:
+    _tr0 = _izv[0]
+    _c = E.connect()
+    _wd = datetime.now(E.TZ).weekday()
+    _gt = "pazar" if _wd == 6 else "cumartesi" if _wd == 5 else "haftaici"
+    _c.execute("INSERT INTO line_times (hat, gun, yon, saat, nt) VALUES (?,?,?,?,?)", (_tr0["h"].split(" ")[0], _gt, 0, _tr0["t0"], ""))
+    _c.execute("INSERT OR REPLACE INTO line_info (hat, kalkis, varis, mesafe, sure, ts) VALUES (?,?,?,?,?,?)", (_tr0["h"].split(" ")[0], "A", "B", "9 km", "45 dk", 0))
+    _c.commit(); _c.close()
+    _iz2 = _j.loads(urllib.request.urlopen(f"http://127.0.0.1:{wp}/api/arac_iz?q={_vq}").read().decode())["seferler"][0]
+    check("araç iz API'si planlanan kalkış/varış ve tahmini varış", _iz2.get("pl") == _tr0["t0"] and bool(_iz2.get("pv")) and bool(_iz2.get("ev")))
+else:
+    check("araç iz API'si planlanan saat testi (veride sefer yok, atlandı)", True)
 _iz0 = _j.loads(urllib.request.urlopen(f"http://127.0.0.1:{wp}/api/arac_iz").read().decode())
 check("araç iz API'si boş sorguda boş döner", _iz0 == {"seferler": []})
 _hr = _j.loads(urllib.request.urlopen(f"http://127.0.0.1:{wp}/api/hat_rota?hat=523-6").read().decode())

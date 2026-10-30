@@ -196,6 +196,10 @@ body.mapmode #frwrap #map{position:absolute;inset:0;height:100%!important;min-he
 .fr-filters .fbox input[type=text],.fr-filters .fbox input:not([type]),.fr-filters .fbox input[type=number],.fr-filters .fbox select{height:38px;padding:0 10px}
 .fr-count{position:absolute;left:12px;bottom:12px;z-index:1400;padding:7px 13px;border-radius:999px;background:var(--pill);border:1px solid var(--line);font-size:.82rem;color:var(--muted);max-width:calc(100% - 24px)}
 .fr-count b{color:var(--accent)}
+.fr-dock{position:absolute;left:50%;transform:translateX(-50%);bottom:14px;z-index:1400;display:none;gap:2px;background:#1b2432;border-radius:18px;padding:6px;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.fr-dock button,.fr-dock a{display:grid;justify-items:center;gap:2px;border:0;background:none;color:#fff;font:600 .7rem Cairo,sans-serif;padding:7px 18px;border-radius:12px;cursor:pointer;text-decoration:none}
+.fr-dock button:hover,.fr-dock a:hover{background:rgba(255,255,255,.12)}.fr-dock .di{font-size:1.15rem;line-height:1}
+@media(min-width:761px){.fr-dock{display:flex}.fr-filters>button{display:none}body.mapmode .fr-count{bottom:14px}}
 .bz{position:relative;width:30px;height:30px;display:grid;place-items:center}
 .bz svg{display:block;filter:drop-shadow(0 1px 2px rgba(0,0,0,.75));transition:transform .3s}
 .bz .bb{fill:var(--accent);stroke:#0a111c;stroke-width:1.4}.bz .bw{fill:#0a111c;opacity:.78}
@@ -1565,6 +1569,18 @@ document.querySelectorAll('.vmap').forEach(function(el){
             conn.close()
         return json.dumps({})
 
+    def _gun_tipi():
+        wd = datetime.now(E.TZ).weekday()
+        return "pazar" if wd == 6 else "cumartesi" if wd == 5 else "haftaici"
+
+    def _sure_dk(t):
+        m = re.findall(r"\d+", t or "")
+        if not m:
+            return 0
+        if ":" in (t or "") and len(m) >= 2:
+            return int(m[0]) * 60 + int(m[1])
+        return int(m[0])
+
     def api_arac_iz(g):
         """Seçili aracın bugünkü seferleri ve iz noktaları (harita yan paneli için)."""
         q = g("q")
@@ -1573,6 +1589,18 @@ document.querySelectorAll('.vmap').forEach(function(el){
         conn = E.connect()
         try:
             res = E.query_day(conn, q, today())
+            planli = {}
+            for tr_ in (res["vehicles"][0]["trips"] if res["vehicles"] else []):
+                h_ = tr_["hat"]
+                if h_ in planli:
+                    continue
+                base = h_.split(" ")[0]
+                try:
+                    tm = [r[0] for r in conn.execute("SELECT saat FROM line_times WHERE hat IN (?,?) AND gun=? ORDER BY saat", (h_, base, _gun_tipi()))]
+                    inf = conn.execute("SELECT sure FROM line_info WHERE hat IN (?,?)", (h_, base)).fetchone()
+                except Exception:
+                    tm, inf = [], None
+                planli[h_] = (tm, _sure_dk(inf[0]) if inf else 0)
         finally:
             conn.close()
         out = []
@@ -1581,8 +1609,25 @@ document.querySelectorAll('.vmap').forEach(function(el){
             pts = [[round(x["lat"], 5), round(x["lng"], 5), fmt(x["t"], False), x.get("hiz") or "", x.get("sira")]
                    for x in tr["samples"] if x["lat"] and x["lng"]]
             if pts:
-                out.append({"h": tr["hat"], "ad": tr.get("ad", ""), "t0": fmt(tr["samples"][0]["t"], False),
-                            "t1": fmt(tr["samples"][-1]["t"], False), "p": pts})
+                t0 = fmt(tr["samples"][0]["t"], False)
+                tm, sure = planli.get(tr["hat"], ([], 0))
+                pl = ""
+                if tm:
+                    dk = lambda x: int(x[:2]) * 60 + int(x[3:5])
+                    try:
+                        pl = min(tm, key=lambda x: abs(dk(x) - dk(t0)))
+                        if abs(dk(pl) - dk(t0)) > 40:
+                            pl = ""
+                    except ValueError:
+                        pl = ""
+                hm_ = lambda m: "%02d:%02d" % ((m // 60) % 24, m % 60)
+                try:
+                    pv = hm_(int(pl[:2]) * 60 + int(pl[3:5]) + sure) if pl and sure else ""
+                    ev = hm_(int(t0[:2]) * 60 + int(t0[3:5]) + sure) if sure else ""
+                except ValueError:
+                    pv = ev = ""
+                out.append({"h": tr["hat"], "ad": tr.get("ad", ""), "t0": t0,
+                            "t1": fmt(tr["samples"][-1]["t"], False), "p": pts, "pl": pl, "pv": pv, "ev": ev})
         return json.dumps({"seferler": out}, ensure_ascii=False)
 
     def api_hat_rota(g):
@@ -1732,7 +1777,7 @@ function openPanel(a,m){
  if(selM&&selA&&selM!==m)styleOf(selM,selA,false);
  selM=m;selA=a;styleOf(m,a,true);m.bringToFront&&m.bringToFront();
  panel.style.display='flex';
- panel.innerHTML='<div class="pc-h"><button class="fr-x" aria-label="Kapat">×</button><div class="fr-head">'+head(a)+'</div></div><div class="pc-s"><div class="fr-photo"><div class="none">Fotoğraf aranıyor…</div></div><div class="pc-rt"></div><div class="pc-pg"></div>'+sec('Araç bilgisi','<div class="fr-info kv2">'+info(a)+'</div>',true)+sec('Bugünkü seferler','<div class="fr-tabs"></div><div class="fr-tr muted">Seferler yükleniyor…</div>',true)+'</div><div class="pc-a"><button class="fr-rf">⟳ Anlık yenile</button><a href="/?q='+encodeURIComponent(a.f||a.p)+'">Sorgu sayfası →</a><span class="fr-rfs"></span></div>';
+ panel.innerHTML='<div class="pc-h"><button class="fr-x" aria-label="Kapat">×</button><div class="fr-head">'+head(a)+'</div></div><div class="pc-s"><div class="fr-photo"><div class="none">Fotoğraf aranıyor…</div></div><div class="pc-rt"></div><div class="pc-tm"></div><div class="pc-pg"></div>'+sec('Araç bilgisi','<div class="fr-info kv2">'+info(a)+'</div>',true)+sec('Bugünkü seferler','<div class="fr-tabs"></div><div class="fr-tr muted">Seferler yükleniyor…</div>',true)+'</div><div class="pc-a"><button class="fr-rf">⟳ Anlık yenile</button><a href="/?q='+encodeURIComponent(a.f||a.p)+'">Sorgu sayfası →</a><span class="fr-rfs"></span></div>';
  panel.onclick=function(e){var t=e.target;if(t.classList&&t.classList.contains('pc-sec')){var o=t.getAttribute('aria-expanded')==='true';t.setAttribute('aria-expanded',!o);t.nextElementSibling.hidden=o;}};
  routeBlock(a);
  panel.querySelector('.fr-x').onclick=closePanel;
@@ -1753,6 +1798,7 @@ function openPanel(a,m){
    getRota(t.h).then(function(rota){
     if(selA!==a)return;
     var d=drawTrip(t,i,rota);
+    (function(){var b=panel.querySelector('.pc-tm');if(!b)return;function c(l,v){return '<div>'+l+'<b>'+(v||'—')+'</b></div>';}b.innerHTML=c('Planlanan kalkış',t.pl)+c('Planlanan varış',t.pv)+c('Gözlenen kalkış',t.t0)+c('Tahmini varış',t.ev);})();
     box.innerHTML='<b>Sefer '+(i+1)+' · Hat '+esc(t.h)+'</b> <span class="muted">'+esc(t.ad||'')+'</span><br><span class="muted">'+esc(t.t0)+' – '+esc(t.t1)+' · '+t.p.length+' gözlem · '+(d.real?'hat güzergâhı gösteriliyor':'bu hat için güzergâh yok, gözlem noktaları gösteriliyor')+'</span>';
     var pts=d.pts.slice();pts.push([a.la,a.lo]);
     if(pts.length>1)map.fitBounds(pts,{padding:[60,60],maxZoom:15});
@@ -1823,6 +1869,7 @@ function load(){
 ['op','tip','live'].forEach(function(i){$(i).addEventListener('change',draw);});
 $('saat').addEventListener('change',load);
 $('ftog').onclick=function(){$('flt').classList.toggle('open');};
+$('dFlt').onclick=$('ftog').onclick;$('dTema').onclick=function(){window.__temaDon&&window.__temaDon();};
 $('full').onclick=function(){var w=$('frwrap'),on=!w.classList.contains('full');w.classList.toggle('full',on);document.body.style.overflow=on?'hidden':'';$('full').textContent=on?'✕ Tam ekrandan çık':'⛶ Tam ekran';setTimeout(function(){map.invalidateSize();},60);};
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){if($('frwrap').classList.contains('full'))$('full').onclick();else closePanel();}});
 map.on('click',function(){});
@@ -1867,6 +1914,9 @@ load();loadStops();setInterval(load,60000);
 .pc-rt>div{padding:14px 8px 10px;text-align:center}.pc-rt .big{font-weight:800;font-size:1.9rem;line-height:1}
 .pc-rt .nm{font-weight:700;font-size:.8rem;margin-top:6px;text-transform:uppercase}.pc-rt .sb{font-size:.7rem;color:var(--muted);margin-top:2px}
 .pc-rt .mid{position:absolute;left:50%;top:50%;width:40px;height:40px;border-radius:50%;background:var(--card);transform:translate(-50%,-50%);display:grid;place-items:center}
+.pc-tm{display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-top:2px}
+.pc-tm div{background:var(--chip);padding:9px 12px;display:flex;justify-content:space-between;align-items:baseline;gap:6px;font-size:.66rem;font-weight:700;color:var(--muted);text-transform:uppercase}
+.pc-tm b{font-size:1.05rem;color:var(--ink);font-variant-numeric:tabular-nums}
 .pc-pg{padding:10px 14px 12px}.pc-pg .bar2{margin-bottom:6px}.pc-pg .pr{display:flex;justify-content:space-between;font-size:.74rem;color:var(--muted)}
 .pc-sec{display:block;width:100%;text-align:left;border:0;background:#33648a;color:#fff;font:700 .85rem Cairo,sans-serif;padding:9px 14px;cursor:pointer}
 .pc-sec::after{content:"▾";float:right}.pc-sec[aria-expanded="false"]::after{content:"▸"}
@@ -1898,6 +1948,7 @@ load();loadStops();setInterval(load,60000);
             '<div class="field"><label>Son kaç saat</label><input id="saat" type="number" value="24" min="1" max="168"></div>'
             '<label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input id="live" type="checkbox" style="width:auto"> yalnız canlı araçlar</label>'
             '</div></div>'
+            '<div class="fr-dock"><button type="button" id="dTema"><span class="di">☀</span>Görünüm</button><button type="button" id="dFlt"><span class="di">⚙</span>Filtreler</button><a href="/hat"><span class="di">🚍</span>Hatlar</a></div>'
             '<div class="fr-count"><span id="cnt">Yükleniyor…</span></div><button type="button" id="full" hidden></button>'
             '</div></div>'
             '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">'
