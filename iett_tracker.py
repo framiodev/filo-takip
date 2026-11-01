@@ -309,6 +309,9 @@ def cmd_run(args):
             if STOP.is_set() or abort.is_set():
                 return kod, None
             rows = line_vehicles(http, kod)
+            if rows is None and not STOP.is_set():
+                time.sleep(20)  # İBB bazen geçici 500 döner; bir kez bekleyip yeniden dene
+                rows = line_vehicles(http, kod)
             time.sleep(args.delay)
             return kod, rows
 
@@ -338,7 +341,7 @@ def cmd_run(args):
                     conn.commit()
                     print(f"  ... {n}/{len(due)} hat, {veh} araç, {fails} hata, {int(time.time() - t0)} sn", flush=True)
         if due and veh == 0 and fails >= 1:
-            backoff = min(backoff * 2 if backoff else 1800, 7200)
+            backoff = min(backoff * 2 if backoff else 600, 7200)
             print(f"Hat sorguları başarısız ({fails}): {soap.last_error} - hız sınırı olabilir, {backoff // 60} dk bekleniyor", flush=True)
             STOP.wait(backoff)
             fl_ts = 0.0

@@ -11,7 +11,7 @@ After=network-online.target
 User=filo
 WorkingDirectory=$APP
 Environment=LC_ALL=C.UTF-8 PYTHONIOENCODING=utf-8
-ExecStart=/usr/bin/python3 iett_tracker.py run --interval 3 --delay 2 --workers 1
+ExecStart=/usr/bin/python3 iett_tracker.py run --interval 3 --delay 4 --workers 1
 Restart=always
 RestartSec=60
 Nice=10
