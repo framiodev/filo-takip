@@ -163,11 +163,12 @@ def main():
     if a.db:
         import ego_tracker as E
         conn = E.connect(os.environ.get("IZMIR_DB", os.path.join(HERE, "izmir_filo.db")))
+        conn.execute("PRAGMA busy_timeout=120000")
         conn.execute("CREATE TABLE IF NOT EXISTS arac_bilgi (anahtar TEXT PRIMARY KEY, marka_model TEXT, "
                      "kaynak TEXT, url TEXT, durum TEXT, ts INTEGER)")
         n = 0
         for filo, plaka, model, garaj, yil, notu, ser in tum:
-            for k in (filo, plaka, ser):
+            for k in (filo, plaka):  # seri no anahtar OLMAZ: canlı OtobusId ile aynı sayı değil
                 if not k:
                     continue
                 mevcut = conn.execute("SELECT kaynak FROM arac_bilgi WHERE anahtar=?", (E.norm(k),)).fetchone()
