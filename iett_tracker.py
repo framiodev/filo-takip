@@ -95,6 +95,15 @@ def fleet(http):
     return out
 
 
+def kaydet_operator(conn, fl):
+    """Filo listesindeki işletmeci (Operator) bilgisini kapı numarasına göre saklar."""
+    conn.execute("CREATE TABLE IF NOT EXISTS arac_operator (arac_no TEXT PRIMARY KEY, operator TEXT, ts INTEGER)")
+    ts = E.now_ts()
+    conn.executemany("INSERT OR REPLACE INTO arac_operator (arac_no, operator, ts) VALUES (?,?,?)",
+                     [(k, str(v.get("operator") or "").strip(), ts) for k, v in fl.items() if v.get("operator")])
+    conn.commit()
+
+
 def yon_of(row):
     """guzergahkodu 500T_G_D0 -> 'G'; yoksa 'yon' alanından tahmin."""
     m = re.search(r"_([GD])_", str(row.get("guzergahkodu") or ""))
@@ -275,6 +284,10 @@ def cmd_run(args):
         fl = fleet(http) if time.time() - fl_ts >= 900 else last_fl
         if fl is not None and fl is not last_fl:
             fl_ts = time.time()
+            try:
+                kaydet_operator(conn, fl)
+            except Exception as e:  # noqa: BLE001
+                print("İşletmeci kaydı yazılamadı:", e, flush=True)
         if fl is None:
             fl_ts = time.time() - 600  # başarısızsa 5 dk sonra yeniden dene
             # Filo listesi (plaka eşlemesi) alınamazsa hat sorgularıyla devam et; son iyi listeyi kullan

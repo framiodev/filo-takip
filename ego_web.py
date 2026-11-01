@@ -1545,12 +1545,21 @@ document.querySelectorAll('.vmap').forEach(function(el){
                     break
         now = E.now_ts()
         mdb, tips = _db_models(), _tips()
+        ops = {}
+        try:
+            conn = E.connect()
+            try:
+                ops = dict(conn.execute("SELECT arac_no, operator FROM arac_operator").fetchall())
+            finally:
+                conn.close()
+        except Exception:
+            ops = {}
         out = []
         for plaka, arac, hat, lat, lng, hiz, sira, t in rows:
             out.append({"p": E.pretty_plate(plaka), "f": arac or "", "h": hat, "la": lat, "lo": lng,
                         "v": hiz, "d": route.get((hat, sira), "") if sira is not None else "",
                         "t": fmt(t, True), "age": int((now - t) / 60), "m": model_for(arac, plaka, mdb)[0],
-                        "tp": _tip_of(tips, arac, plaka), "yn": yon.get(plaka), "sr": sira})
+                        "tp": _tip_of(tips, arac, plaka), "yn": yon.get(plaka), "sr": sira, "op": ops.get(arac or "", "")})
         return json.dumps({"n": len(out), "araclar": out}, ensure_ascii=False)
 
     def api_foto(g):
@@ -1744,7 +1753,7 @@ function head(a){
 function info(a){
  function kv(l,v,w){return '<div'+(w?' class="w"':'')+'><small>'+l+'</small><b>'+v+'</b></div>';}
  var yn=a.yn==null?'-':a.yn+'°';
- return kv('Model',a.m?esc(a.m)+' ~':'-',1)+kv('Plaka',esc(a.p))+kv('Filo kodu',esc(a.f||'-'))+kv('Hız',esc(a.v||0)+' km/sa')+kv('Yön',yn)+kv('Durum',statusOf(a))+kv('Son görülme',esc(String(a.t).slice(-11)))+(a.d?kv('Yöneldiği durak',esc(a.d),1):'');
+ return kv('Model',a.m?esc(a.m)+' ~':'-',1)+kv('Plaka',esc(a.p))+kv('Filo kodu',esc(a.f||'-'))+(a.op?kv('İşletmeci',esc(a.op),1):'')+kv('Hız',esc(a.v||0)+' km/sa')+kv('Yön',yn)+kv('Durum',statusOf(a))+kv('Son görülme',esc(String(a.t).slice(-11)))+(a.d?kv('Yöneldiği durak',esc(a.d),1):'');
 }
 function upd(a){var h=panel.querySelector('.fr-head'),i=panel.querySelector('.fr-info'),n=panel.querySelector('.led-next');if(n)n.textContent=a.d||'—';if(h)h.innerHTML=head(a);if(i)i.innerHTML=info(a);}
 function sec(t,h,o){return '<button class="pc-sec" aria-expanded="'+(o?'true':'false')+'">'+t+'</button><div class="pc-body"'+(o?'':' hidden')+'>'+h+'</div>';}
