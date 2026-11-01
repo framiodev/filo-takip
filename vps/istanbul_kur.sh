@@ -19,7 +19,8 @@ Nice=10
 WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
-systemctl enable --now filo-istanbul.service
+systemctl enable filo-istanbul.service
+systemctl restart filo-istanbul.service
 sleep 5
 systemctl --no-pager status filo-istanbul.service | head -8
 echo "Günlük: journalctl -u filo-istanbul -n 20 --no-pager"
