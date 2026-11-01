@@ -7,6 +7,7 @@ import csv
 import html
 import io
 import json
+import gzip as _gzip
 import math
 import os
 import re
@@ -1514,35 +1515,61 @@ document.querySelectorAll('.vmap').forEach(function(el){
 
 
     # ------------------------------------------------------------------ Harita
+    _arac_cache = {}
+
+    def _doldur_bir_kez():
+        for _c, _p in CITY_DB.items():
+            if os.path.exists(_p):
+                try:
+                    _cn = E.sqlite3.connect(_p, timeout=60)
+                    _cn.executescript(E.SCHEMA)
+                    E.arac_son_doldur(_cn)
+                    _cn.close()
+                except Exception:
+                    pass
+        try:
+            _cn = E.connect()
+            E.arac_son_doldur(_cn)
+            _cn.close()
+        except Exception:
+            pass
+    import threading as _th
+    _th.Thread(target=_doldur_bir_kez, daemon=True).start()
+
     def api_araclar(g):
         try:
             saat = max(1, min(168, int(g("saat", "24"))))
         except ValueError:
             saat = 24
+        ck = (cur_city(), saat)
+        hit = _arac_cache.get(ck)
+        if hit and time.time() - hit[0] < 5:
+            return hit[1]  # aynı anda açılan haritalar tek sorguyu paylaşır
+        body = _api_araclar(saat)
+        _arac_cache[ck] = (time.time(), body)
+        return body
+
+    def _api_araclar(saat):
         since = E.now_ts() - saat * 3600
         conn = E.connect()
+        yon = {}
         try:
-            rows = conn.execute(
-                "SELECT plaka, arac_no, hat, lat, lng, hiz, sira, MAX(COALESCE(kts, ts)) FROM sightings "
-                "WHERE ts>=? AND lat IS NOT NULL AND lng IS NOT NULL AND lat<>0 GROUP BY plaka", (since,)).fetchall()
-            route = {(h, sr): ad for h, sr, ad in conn.execute("SELECT hat, sira, ad FROM line_route")}
-            recent = conn.execute(
-                "SELECT plaka, lat, lng FROM (SELECT plaka, lat, lng, ROW_NUMBER() OVER (PARTITION BY plaka ORDER BY ts DESC) rn "
-                "FROM sightings WHERE ts>=? AND lat IS NOT NULL AND lat<>0) WHERE rn<=8 ORDER BY plaka, rn",
-                (E.now_ts() - 1800,)).fetchall()
+            rows = conn.execute("SELECT plaka, arac_no, hat, lat, lng, hiz, sira, COALESCE(kts, ts), plat, plng FROM arac_son "
+                                "WHERE ts>=? AND lat<>0", (since,)).fetchall()
+            if rows:
+                route = {(h, sr): ad for h, sr, ad in conn.execute("SELECT hat, sira, ad FROM line_route")}
+                for pl_, _a, _h, la_, lo_, _v, _s, _t, pla, plo in rows:
+                    if pla is not None and plo is not None:
+                        dy, dx = (la_ - pla) * 111320, (lo_ - plo) * 111320 * math.cos(math.radians(la_))
+                        yon[pl_] = int((math.degrees(math.atan2(dx, dy)) + 360) % 360)
+                rows = [r[:8] for r in rows]
+            else:  # arac_son henüz dolmadıysa eski (yavaş) yol
+                rows = conn.execute(
+                    "SELECT plaka, arac_no, hat, lat, lng, hiz, sira, MAX(COALESCE(kts, ts)) FROM sightings "
+                    "WHERE ts>=? AND lat IS NOT NULL AND lng IS NOT NULL AND lat<>0 GROUP BY plaka", (since,)).fetchall()
+                route = {(h, sr): ad for h, sr, ad in conn.execute("SELECT hat, sira, ad FROM line_route")}
         finally:
             conn.close()
-        yon = {}
-        pts = {}
-        for pl_, la_, lo_ in recent:
-            pts.setdefault(pl_, []).append((la_, lo_))
-        for pl_, ps in pts.items():
-            la0, lo0 = ps[0]
-            for la1, lo1 in ps[1:]:
-                dy, dx = (la0 - la1) * 111320, (lo0 - lo1) * 111320 * math.cos(math.radians(la0))
-                if dx * dx + dy * dy > 35 * 35:  # en az ~35 m hareket
-                    yon[pl_] = int((math.degrees(math.atan2(dx, dy)) + 360) % 360)
-                    break
         now = E.now_ts()
         mdb, tips = _db_models(), _tips()
         ops = {}
@@ -1954,7 +1981,7 @@ $('full').onclick=function(){var w=$('frwrap'),on=!w.classList.contains('full');
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){if($('frwrap').classList.contains('full'))$('full').onclick();else closePanel();}});
 map.on('click',function(){});
 var u=new URLSearchParams(location.search);if(u.get('q'))$('q').value=u.get('q');if(u.get('hat'))$('hat').value=u.get('hat');
-load();loadStops();setInterval(load,60000);
+load();loadStops();setInterval(function(){if(!document.hidden)load();},15000);
 })();
 """
 
@@ -2139,8 +2166,14 @@ load();loadStops();setInterval(load,60000);
 
         def _send(self, body, ctype="text/html; charset=utf-8", code=200, extra=None):
             data = body if isinstance(body, bytes) else body.encode("utf-8")
+            gz = len(data) > 1200 and "gzip" in (self.headers.get("Accept-Encoding") or "") and ctype.startswith(("application/json", "text/"))
+            if gz:
+                data = _gzip.compress(data, 4)
             self.send_response(code)
             self.send_header("Content-Type", ctype)
+            if gz:
+                self.send_header("Content-Encoding", "gzip")
+                self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
             for k, v in (extra or {}).items():

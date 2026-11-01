@@ -26,6 +26,7 @@ import argparse
 import csv
 import html
 import json
+import math
 import os
 import random
 import re
@@ -285,6 +286,11 @@ CREATE TABLE IF NOT EXISTS sightings (
 );
 CREATE INDEX IF NOT EXISTS ix_sight_plaka ON sightings (plaka, ts);
 CREATE INDEX IF NOT EXISTS ix_sight_ts ON sightings (ts);
+CREATE TABLE IF NOT EXISTS arac_son (
+    plaka TEXT PRIMARY KEY, arac_no TEXT, hat TEXT, lat REAL, lng REAL, hiz REAL, sira INTEGER,
+    ts INTEGER, kts INTEGER, plat REAL, plng REAL
+);
+CREATE INDEX IF NOT EXISTS ix_arac_son_ts ON arac_son (ts);
 CREATE TABLE IF NOT EXISTS line_route (
     hat TEXT NOT NULL, sira INTEGER NOT NULL, durak TEXT NOT NULL, ad TEXT,
     PRIMARY KEY (hat, sira)
@@ -403,8 +409,33 @@ def record_sighting(conn, ts, row, hat, gap, keep_raw=True):
         )
         if kts:
             _LAST_KTS[(key, hat)] = kts
+    if lat and lng:
+        # harita için araç başına tek satır (24 saatlik sightings'i taramadan okunur); plat/plng: yön için son "hareketli" nokta
+        pv = conn.execute("SELECT lat, lng, plat, plng FROM arac_son WHERE plaka=?", (key,)).fetchone()
+        plat, plng = (pv[2], pv[3]) if pv else (None, None)
+        if pv and pv[0] and pv[1]:
+            dy = (lat - pv[0]) * 111320
+            dx = (lng - pv[1]) * 111320 * math.cos(math.radians(lat))
+            if dx * dx + dy * dy > 35 * 35:
+                plat, plng = pv[0], pv[1]
+        conn.execute("INSERT OR REPLACE INTO arac_son (plaka, arac_no, hat, lat, lng, hiz, sira, ts, kts, plat, plng) "
+                     "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (key, arac_no, hat, lat, lng, hiz, sira, ts, kts, plat, plng))
     conn.execute("INSERT OR IGNORE INTO meta (k, v) VALUES ('first_data_ts', ?)", (str(ts),))
     return new
+
+
+def arac_son_doldur(conn):
+    """arac_son boşsa son 48 saatin sightings kayıtlarından bir kerelik doldurur (yeni kurulum/yükseltme)."""
+    if conn.execute("SELECT 1 FROM arac_son LIMIT 1").fetchone():
+        return 0
+    since = now_ts() - 48 * 3600
+    conn.execute(
+        "INSERT OR REPLACE INTO arac_son (plaka, arac_no, hat, lat, lng, hiz, sira, ts, kts) "
+        "SELECT s.plaka, s.arac_no, s.hat, s.lat, s.lng, s.hiz, s.sira, s.ts, s.kts FROM sightings s "
+        "JOIN (SELECT plaka, MAX(ts) mt FROM sightings WHERE ts>=? AND lat IS NOT NULL AND lat<>0 GROUP BY plaka) m "
+        "ON s.plaka=m.plaka AND s.ts=m.mt WHERE s.lat IS NOT NULL AND s.lat<>0", (since,))
+    conn.commit()
+    return conn.execute("SELECT COUNT(*) FROM arac_son").fetchone()[0]
 
 
 def load_catalog_set(conn):
