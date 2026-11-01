@@ -277,12 +277,15 @@ def cmd_run(args):
     gap = max(int(args.interval * 60 * 3), 1800)  # tur ~13 dk sürebilir; aynı aracın kaydı 30 dk içinde sürer
     idle = {}
     fl_warned, last_fl, fl_ts, backoff = False, {}, 0.0, 0
+    veh_hat = {}   # kapı no -> (hat anahtarı, son doğrulama ts): filo konumu bu hatta yazılır
+    lastq = {}     # hat -> son sorgu zamanı
     adapt = [float(args.delay)]  # geçerli hat arası bekleme (sn); hatada artar, başarıda azalır
     print(f"İETT toplayıcı: {len(kods)} hat, {args.interval} dk aralık.", flush=True)
     while not STOP.is_set():
         t0 = time.time()
         ts = E.now_ts()
-        fl = fleet(http) if time.time() - fl_ts >= 900 else last_fl
+        fl = fleet(http) if time.time() - fl_ts >= max(120, args.interval * 60 - 30) else last_fl
+        fresh = fl is not None and fl is not last_fl
         if fl is not None and fl is not last_fl:
             fl_ts = time.time()
             try:
@@ -302,7 +305,20 @@ def cmd_run(args):
         for k in kods:
             if k not in due:
                 idle[k] -= 1
+        if args.hat_per_cycle and len(due) > args.hat_per_cycle:
+            due = sorted(due, key=lambda k: lastq.get(k, 0))[:args.hat_per_cycle]  # en eskiden sorgulananlar
         new = veh = fails = consec = 0
+        fveh = 0
+        if fresh and fl:
+            for kapi, f in fl.items():  # filo-önce: tek çağrıdaki tüm konumlar, hattı bilinen araçlara yazılır
+                vh = veh_hat.get(kapi)
+                if not vh or ts - vh[1] > 5400 or f.get("lat") in (None, ""):
+                    continue
+                row = {"arac_no": kapi, "plaka_no": f.get("plaka") or kapi, "lat": f.get("lat"), "lng": f.get("lng"),
+                       "hiz": f.get("hiz", ""), "durak_no": "", "durak_sira_no": "", "konum_tarihi": f.get("saat", ""), "detay": ""}
+                if E.record_sighting(conn, ts, row, vh[0], gap, keep_raw=not args.no_raw):
+                    new += 1
+                fveh += 1
 
         abort = threading.Event()
 
@@ -338,8 +354,11 @@ def cmd_run(args):
                     continue
                 consec = 0
                 idle[kod] = 0 if rows else args.idle_max
+                lastq[kod] = ts
                 for r in rows:
                     row, key = to_ego_row(r, fl, sira_of)
+                    if row["arac_no"]:
+                        veh_hat[row["arac_no"]] = (key, ts)
                     if E.record_sighting(conn, ts, row, key, gap, keep_raw=not args.no_raw):
                         new += 1
                     veh += 1
@@ -358,7 +377,7 @@ def cmd_run(args):
                      (json.dumps({"ts": E.now_ts(), "due": len(due), "vehicles": veh, "fails": fails, "interval": args.interval,
                                   "fleet": len(fl)}),))
         conn.commit()
-        print(f"[{E.fmt_ts(E.now_ts(), False)}] filo {len(fl)} · {len(due)} hat, {veh} araç, {new} yeni, {fails} hata", flush=True)
+        print(f"[{E.fmt_ts(E.now_ts(), False)}] filo {len(fl)} ({fveh} konum filodan) · {len(due)} hat, {veh} araç, {new} yeni, {fails} hata", flush=True)
         if args.once:
             break
         STOP.wait(max(10, args.interval * 60 - (time.time() - t0)))
@@ -390,6 +409,7 @@ def main(argv=None):
     p.add_argument("--workers", type=int, default=1, help="paralel sorgu sayısı")
     p.add_argument("--no-raw", action="store_true")
     p.add_argument("--once", action="store_true")
+    p.add_argument("--hat-per-cycle", type=int, default=25, dest="hat_per_cycle", help="her turda en fazla bu kadar hat sorgula (filo-önce modu; 0 = hepsi)")
     p.add_argument("--hatlar", default="", help="yalnızca bu hatları tara (virgülle ayrılmış, ör. 500T,15F); deneme için")
     p.set_defaults(fn=cmd_run)
     args = ap.parse_args(argv)
