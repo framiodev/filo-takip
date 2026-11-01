@@ -277,6 +277,7 @@ def cmd_run(args):
     gap = max(int(args.interval * 60 * 3), 1800)  # tur ~13 dk sürebilir; aynı aracın kaydı 30 dk içinde sürer
     idle = {}
     fl_warned, last_fl, fl_ts, backoff = False, {}, 0.0, 0
+    adapt = [float(args.delay)]  # geçerli hat arası bekleme (sn); hatada artar, başarıda azalır
     print(f"İETT toplayıcı: {len(kods)} hat, {args.interval} dk aralık.", flush=True)
     while not STOP.is_set():
         t0 = time.time()
@@ -301,7 +302,7 @@ def cmd_run(args):
         for k in kods:
             if k not in due:
                 idle[k] -= 1
-        new = veh = fails = 0
+        new = veh = fails = consec = 0
 
         abort = threading.Event()
 
@@ -310,9 +311,14 @@ def cmd_run(args):
                 return kod, None
             rows = line_vehicles(http, kod)
             if rows is None and not STOP.is_set():
-                time.sleep(20)  # İBB bazen geçici 500 döner; bir kez bekleyip yeniden dene
+                adapt[0] = min(max(adapt[0] * 2, args.delay * 2), 60.0)
+                time.sleep(min(20 + adapt[0], 60))  # İBB geçici 500 döner; bekleyip bir kez daha dene
                 rows = line_vehicles(http, kod)
-            time.sleep(args.delay)
+            if rows is None:
+                adapt[0] = min(max(adapt[0] * 2, args.delay * 2), 60.0)
+            else:
+                adapt[0] = max(args.delay, adapt[0] * 0.9)
+            time.sleep(adapt[0])
             return kod, rows
 
         with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
