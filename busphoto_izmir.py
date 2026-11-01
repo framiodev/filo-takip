@@ -87,11 +87,12 @@ def satirlari_coz(rows):
         if not plaka and not filo:
             continue
         yil = next((x for x in c if re.fullmatch(r"(19|20)\d{2}", x)), "")
+        ser = next((x for x in c if re.fullmatch(r"\d{3,6}", x) and not re.fullmatch(r"(19|20)\d{2}", x)), "")
         metin = [x for x in c if x and not RE_PLAKA.match(x) and not RE_FILO.match(x) and not RE_TARIH.match(x)
                  and not re.fullmatch(r"\d+", x) and not re.fullmatch(r"(19|20)\d{2}", x)]
         garaj = metin[0] if metin else ""
         notu = metin[1] if len(metin) > 1 else ""
-        out.append((filo, re.sub(r"\s+", " ", plaka).strip(), yil, garaj, notu))
+        out.append((filo, re.sub(r"\s+", " ", plaka).strip(), yil, garaj, notu, ser))
     return out
 
 
@@ -147,8 +148,8 @@ def main():
     for i, mid in enumerate(mids, 1):
         model, rows = model_cek(mid, a.bekle)
         print("[%d/%d] mid=%s %s: %d araç" % (i, len(mids), mid, model, len(rows)), flush=True)
-        for filo, plaka, yil, garaj, notu in rows:
-            tum.append((filo, plaka, model, garaj, yil, notu))
+        for filo, plaka, yil, garaj, notu, ser in rows:
+            tum.append((filo, plaka, model, garaj, yil, notu, ser))
         time.sleep(a.bekle)
     if a.kuru:
         for r in tum[:15]:
@@ -156,7 +157,7 @@ def main():
         return 0
     with open(a.cikti, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.writer(f, delimiter=";")
-        w.writerow(["filo", "plaka", "model", "garaj", "yil", "not"])
+        w.writerow(["filo", "plaka", "model", "garaj", "yil", "not", "seri"])
         w.writerows(tum)
     print("Yazıldı: %s (%d satır)" % (a.cikti, len(tum)))
     if a.db:
@@ -165,8 +166,8 @@ def main():
         conn.execute("CREATE TABLE IF NOT EXISTS arac_bilgi (anahtar TEXT PRIMARY KEY, marka_model TEXT, "
                      "kaynak TEXT, url TEXT, durum TEXT, ts INTEGER)")
         n = 0
-        for filo, plaka, model, garaj, yil, notu in tum:
-            for k in (filo, plaka):
+        for filo, plaka, model, garaj, yil, notu, ser in tum:
+            for k in (filo, plaka, ser):
                 if not k:
                     continue
                 mevcut = conn.execute("SELECT kaynak FROM arac_bilgi WHERE anahtar=?", (E.norm(k),)).fetchone()
