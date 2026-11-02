@@ -136,7 +136,7 @@ E.STOP.clear()
 
 # elle zaman damgalı kayıtlar ekleyerek gün boyu senaryo kur (aynı araç iki hatta)
 conn = E.connect()
-base = E.to_epoch(E.parse_day("2027-01-15"), E.parse_time("08:00"))
+base = E.to_epoch(E.parse_day("2026-11-20"), E.parse_time("08:00"))
 row = {"arac_no": "22-370", "plaka_no": "06 DHC 251", "lat": "39.9", "lng": "32.8", "hiz": "20"}
 for i in range(0, 12):          # 08:00-09:50 hat 481 (10 dk aralık)
     E.record_sighting(conn, base + i * 600, row, "481", 1800)
@@ -148,7 +148,7 @@ stints = conn.execute("SELECT hat, first_ts, last_ts, n FROM stints WHERE plaka=
 check("hat 481 tek aralık", stints[0][0] == "481" and stints[0][3] == 12 and stints[0][2] - stints[0][1] == 11 * 600)
 check("hat değişince yeni aralık", stints[1][0] == "523-6")
 
-d = E.parse_day("2027-01-15")
+d = E.parse_day("2026-11-20")
 q1 = E.query_vehicle(conn, "EGO-22-370", E.to_epoch(d, E.parse_time("09:15")))
 check("filo kodu ile bulundu (tam)", q1["kind"] == "tam" and q1["vehicles"][0]["items"][0]["hat"] == "481"
       and q1["vehicles"][0]["items"][0]["conf"] == "kesin")
@@ -228,9 +228,9 @@ print(open(p2, encoding="utf-8-sig").read())
 web = E.ThreadingHTTPServer(("127.0.0.1", 0), E.make_handler())
 wp = web.server_address[1]
 threading.Thread(target=web.serve_forever, daemon=True).start()
-page = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=EGO-22-370&tarih=2027-01-15&saat=09:15&tol=30").read().decode()
+page = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=EGO-22-370&tarih=2026-11-20&saat=09:15&tol=30").read().decode()
 check("web sorgu sonucu", "<b>481</b>" in page)
-page2 = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=%3Cscript%3E&tarih=2027-01-15&saat=09:15").read().decode()
+page2 = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=%3Cscript%3E&tarih=2026-11-20&saat=09:15").read().decode()
 check("web XSS kaçışı", "<script>alert" not in page2 and "&lt;script&gt;" in page2)
 page4 = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=09-524&tarih=2026-11-03&saat=").read().decode()
 check("web: saat boşsa tüm gün (seferler)", "Sefer 1" in page4 and "DURAK-4" in page4)
@@ -271,7 +271,7 @@ import html as _html
 _m = re.search(r'class="vmap" data-geo="([^"]*)"', page4) if (re := __import__("re")) else None
 _geo = _j.loads(_html.unescape(_m.group(1))) if _m else {}
 check("sorgu sonucunda araç haritası (güzergâh noktaları)", bool(_geo.get("trips")) and len(_geo["trips"][0]["p"][0]) == 4 and "leaflet" in page4)
-_pw = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=EGO-22-370&tarih=2027-01-15&saat=09:15&tol=30").read().decode()
+_pw = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=EGO-22-370&tarih=2026-11-20&saat=09:15&tol=30").read().decode()
 check("saatli sorguda da harita kutusu", 'class="vmap"' in _pw)
 _pn = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=09-524&tarih=2026-12-25").read().decode()
 check("kayıt olmayan günde son bilinen konum", '"son": {' in _html.unescape(_pn) and 'class="vmap"' in _pn)
@@ -345,7 +345,7 @@ except urllib.error.HTTPError as _e:
     check("modeller kaydet (POST → yönlendirme)", _e.code == 303)
 _mp = urllib.request.urlopen(f"http://127.0.0.1:{wp}/modeller").read().decode()
 check("modeller sayfası kaydı gösteriyor (XSS kaçışlı)", "TEST Model &lt;b&gt;" in _mp and "TEST Model <b>" not in _mp)
-_p22 = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=22-370&tarih=2027-01-15").read().decode()
+_p22 = urllib.request.urlopen(f"http://127.0.0.1:{wp}/?q=22-370&tarih=2026-11-20").read().decode()
 check("DB modeli sorguda görünüyor", "TEST Model" in _p22)
 _bad = urllib.request.Request(f"http://127.0.0.1:{wp}/modeller/sil", data=b"anahtar=22-370")
 _bad.add_header("Origin", "http://evil.example")
@@ -392,7 +392,7 @@ check("hat: arama", "Duraklar" in _get("/hat?q=481"))
 check("hat: bilinmeyen", "Hat bulunamadı" in _get("/hat?no=ZZZ"))
 check("durak sayfası XSS kaçışlı", "&lt;script&gt;" in _get("/durak?q=%3Cscript%3E") and "value=\"<script>" not in _get("/durak?q=%3Cscript%3E"))
 
-check("gün: hat adıyla arama", "Hat 481" in _get("/gun?tarih=2027-01-15&hat=uyan%C4%B1%C5%9F") and "Hat 523-6" not in _get("/gun?tarih=2027-01-15&hat=uyan%C4%B1%C5%9F"))
+check("gün: hat adıyla arama", "Hat 481" in _get("/gun?tarih=2026-11-20&hat=uyan%C4%B1%C5%9F") and "Hat 523-6" not in _get("/gun?tarih=2026-11-20&hat=uyan%C4%B1%C5%9F"))
 check("gün: hat önerileri", 'datalist id="hatlist"' in _get("/gun"))
 
 check("otomatik yenileme işaretleri", 'data-live="30"' in _get("/durak?no=10940") and 'data-live="30"' in _get("/durum") and "SOFT" not in _get("/durum"))
@@ -425,7 +425,7 @@ s = socket.socket(); s.bind(("127.0.0.1", 0)); hp = s.getsockname()[1]; s.close(
 hep = threading.Thread(target=E.main, args=(["hepsi", "--port", str(hp), "--delay", "0.01", "--interval", "10"],))
 hep.start()
 time.sleep(3)
-page3 = urllib.request.urlopen(f"http://127.0.0.1:{hp}/?q=06DHC251&tarih=2027-01-15&saat=09:15").read().decode()
+page3 = urllib.request.urlopen(f"http://127.0.0.1:{hp}/?q=06DHC251&tarih=2026-11-20&saat=09:15").read().decode()
 check("hepsi: arayüz açıldı", "EGO Filo Takip" in page3 and "<b>481</b>" in page3)
 E.STOP.set()
 hep.join(timeout=40)
