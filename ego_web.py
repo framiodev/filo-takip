@@ -444,11 +444,25 @@ function render(j){var h='',n=0;
  if(j.duraklar&&j.duraklar.length){h+='<div class="sh">Duraklar</div>';j.duraklar.forEach(function(x){n++;h+='<a class="si" href="/durak?no='+enc(x.d)+'"><b>'+esc(x.ad)+'</b><small>'+esc(x.d)+' · '+(x.n?esc(x.h.join(', '))+(x.n>x.h.length?' …':''):'hat bilgisi yok')+'</small></a>';});}
  if(!n)h='<div class="em">Sonuç yok. Araç için filo kodu/plaka, hat için numara, durak veya bölge için ad yazın.</div>';
  r.innerHTML=h;r.hidden=false;sel=-1;}
-function go(q){q=q.trim();if(q.length<2){r.hidden=true;return;}
+function ls(k,v){try{if(v===undefined)return JSON.parse(localStorage.getItem(k)||'[]');localStorage.setItem(k,JSON.stringify(v));}catch(e){return [];}}
+function home(){var fav=ls('fav'),rec=ls('rec'),h='<a class="si" href="/yakin"><span class="tg">📍</span><b>Yakınımdaki duraklar</b></a>';
+ if(fav.length){h+='<div class="sh">Favoriler</div>';fav.forEach(function(x){h+='<a class="si" href="'+esc(x.h)+'"><span class="tg">★</span><b>'+esc(x.l)+'</b></a>';});}
+ if(rec.length){h+='<div class="sh">Son aramalar</div>';rec.forEach(function(x){h+='<a class="si" href="'+esc(x.h)+'"><b>'+esc(x.l)+'</b></a>';});}
+ if(!fav.length&&!rec.length)h+='<div class="em">Araç, hat, durak veya bölge adı yazın. Sık baktıklarınızı ★ ile favorilere ekleyebilirsiniz.</div>';
+ r.innerHTML=h;r.hidden=false;sel=-1;}
+r.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a.si');if(!a)return;var t=a.querySelector('b');var l=(t?t.textContent:a.textContent).trim();
+ if(a.getAttribute('href')==='/yakin')return;var rec=ls('rec').filter(function(x){return x.h!==a.getAttribute('href');});rec.unshift({h:a.getAttribute('href'),l:l.slice(0,60)});ls('rec',rec.slice(0,6));});
+function star(){var p=location.pathname,m=document.querySelector('main .vhead b');if(!m||(p!=='/durak'&&p!=='/hat'))return;var u=location.pathname+location.search;
+ if(!/[?&]no=/.test(location.search)||document.getElementById('favbtn'))return;var b=document.createElement('button');b.id='favbtn';b.type='button';b.className='csvbtn';b.style.cssText='cursor:pointer;margin-left:8px';
+ function paint(){var on=ls('fav').some(function(x){return x.h===u;});b.textContent=on?'★ Favori':'☆ Favori';}
+ b.onclick=function(){var f=ls('fav'),on=f.some(function(x){return x.h===u;});if(on)f=f.filter(function(x){return x.h!==u;});else f.unshift({h:u,l:m.textContent.trim().slice(0,60)});ls('fav',f.slice(0,12));paint();};
+ paint();m.parentNode.appendChild(b);}
+star();setInterval(star,1500);
+function go(q){q=q.trim();if(q.length<2){home();return;}
  if(cache[q]){render(cache[q]);return;}var my=++seq;
  fetch('/api/ara_hizli?q='+enc(q),{credentials:'same-origin'}).then(function(x){return x.json()}).then(function(j){if(my!==seq)return;cache[q]=j;render(j);}).catch(function(){});}
 i.addEventListener('input',function(){clearTimeout(tm);tm=setTimeout(function(){go(i.value);},140);});
-i.addEventListener('focus',function(){if(i.value.trim().length>=2)go(i.value);});
+i.addEventListener('focus',function(){go(i.value);});
 function items(){return r.querySelectorAll('a.si');}
 function mark(){var a=items();for(var k=0;k<a.length;k++)a[k].classList.toggle('on',k===sel);if(a[sel])a[sel].scrollIntoView({block:'nearest'});}
 i.addEventListener('keydown',function(e){var a=items();
@@ -1126,7 +1140,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         form = ('<form class="card form" method="get" action="/durak"><div class="field"><label>Durak adı veya numarası</label>'
                 f'<input name="q" value="{esc(q or no, True)}" placeholder="ör. {esc(city_meta()["durak_ornek"], True)}" autocomplete="off"></div>'
                 '<button class="btn">Ara</button></form>')
-        body = "<h1>Durak takibi</h1>" + form
+        body = '<h1>Durak takibi</h1><a class="chip" href="/yakin" style="display:inline-block;margin:0 0 10px;padding:8px 14px">📍 Yakınımdaki duraklar</a>' + form
         conn = E.connect()
         try:
             if q and not no:
@@ -1184,7 +1198,7 @@ document.querySelectorAll('.vmap').forEach(function(el){
         form = ('<form class="card form" method="get" action="/durak"><div class="field"><label>Durak adı veya numarası</label>'
                 f'<input name="q" value="{esc(q or no, True)}" placeholder="ör. {esc(city_meta()['durak_ornek'], True)}" autocomplete="off"></div>'
                 '<button class="btn">Ara</button></form>')
-        body = "<h1>Durak takibi</h1>" + form
+        body = '<h1>Durak takibi</h1><a class="chip" href="/yakin" style="display:inline-block;margin:0 0 10px;padding:8px 14px">📍 Yakınımdaki duraklar</a>' + form
         if q and not no:
             res = stop_search(q)
             if len(res) == 1:
@@ -1285,6 +1299,14 @@ document.querySelectorAll('.vmap').forEach(function(el){
             lab = ("Kalkış: ", "Varış: ", "Mesafe: ", "Süre: ")
             head += '<div class="muted" style="margin-top:6px">' + " · ".join(esc(l + v) for l, v in zip(lab, info) if v) + "</div>"
         body += head + "</div>"
+        try:
+            _hm = hat_map_html(hat, route, None)
+        except Exception as _e:
+            print("hat haritası hatası:", _e, flush=True)
+            _hm = ""
+        if _hm:
+            body += _hm + '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">' \
+                '<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script><script>if(window.L){' + HMAP_JS + '}</script>'
         if rows is None and route:
             body += note("EGO canlı servisi şu an cevap vermedi; hattaki araçlar gösterilemiyor.")
         elif route:
@@ -1869,6 +1891,79 @@ document.querySelectorAll('.vmap').forEach(function(el){
         return json.dumps({"q": q, "hatlar": [{"h": h, "ad": a} for h, a in hats[:8]], "duraklar": duraklar,
                            "bolge": bolge, "araclar": araclar}, ensure_ascii=False)
 
+
+    _crd_cache = {}
+
+    def stop_coords():
+        ck = cur_city()
+        hit = _crd_cache.get(ck)
+        if hit and time.time() - hit[0] < 600:
+            return hit[1]
+        conn = E.connect()
+        try:
+            if ck in CITY_DB:
+                rows = conn.execute("SELECT durak, ad, lat, lng FROM stops_geo WHERE lat IS NOT NULL").fetchall()
+            else:
+                rows = conn.execute("SELECT p.durak, COALESCE((SELECT ad FROM line_route r WHERE r.durak=p.durak AND r.ad<>'' LIMIT 1), ''), p.lat, p.lng "
+                                    "FROM stop_pos p WHERE p.lat IS NOT NULL").fetchall()
+        finally:
+            conn.close()
+        _crd_cache[ck] = (time.time(), rows)
+        return rows
+
+    def api_yakin(g):
+        try:
+            la, lo = float(g("lat")), float(g("lng"))
+        except ValueError:
+            return json.dumps({"duraklar": []})
+        _st, _hl, dh = search_index()
+        coslat = math.cos(math.radians(la))
+        best = []
+        for d, ad, a, b in stop_coords():
+            dy, dx = (a - la) * 111320, (b - lo) * 111320 * coslat
+            m = dx * dx + dy * dy
+            if m < 1500 * 1500:
+                best.append((m, d, ad))
+        best.sort()
+        out = [{"d": d, "ad": ad or "Durak", "m": int(m ** 0.5), "h": sorted(dh.get(d, []), key=natural_key)[:10]} for m, d, ad in best[:14]]
+        return json.dumps({"duraklar": out}, ensure_ascii=False)
+
+    def page_yakin(g):
+        body = ('<h1>Yakınımdaki duraklar</h1><div class="card" id="yk"><div class="muted" id="yks">Konumunuz alınıyor… tarayıcı izin isterse '
+                '“İzin ver”e dokunun. Konum yalnızca yakın durakları bulmak için kullanılır, kaydedilmez.</div>'
+                '<button class="btn" id="ykb" type="button" style="margin-top:10px;display:none">Konumumu tekrar dene</button></div><div id="ykl"></div>'
+                "<script>" + r"""(function(){function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
+var s=document.getElementById('yks'),b=document.getElementById('ykb'),l=document.getElementById('ykl');
+function ok(p){s.textContent='Konum alındı (±'+Math.round(p.coords.accuracy)+' m). En yakın duraklar:';b.style.display='none';
+ fetch('/api/yakin?lat='+p.coords.latitude+'&lng='+p.coords.longitude).then(function(r){return r.json()}).then(function(j){
+  if(!j.duraklar.length){l.innerHTML='<div class="card empty">1,5 km içinde bilinen durak yok.</div>';return;}
+  l.innerHTML='<div class="card"><table><tbody>'+j.duraklar.map(function(x){return '<tr><td><a href="/durak?no='+encodeURIComponent(x.d)+'"><b>'+esc(x.ad)+'</b></a><div class="muted">'+esc(x.d)+'</div></td><td style="white-space:nowrap">'+x.m+' m</td><td>'+x.h.map(function(h){return '<a class="chip" href="/hat?no='+encodeURIComponent(h)+'">'+esc(h)+'</a>';}).join(' ')+'</td></tr>';}).join('')+'</tbody></table></div>';});}
+function bad(e){s.textContent=e&&e.code===1?'Konum izni verilmedi. Tarayıcı ayarlarından bu site için konuma izin verin ya da durak adıyla arayın.':'Konum alınamadı.';b.style.display='';}
+function go(){if(!navigator.geolocation){s.textContent='Bu tarayıcı konumu desteklemiyor.';return;}navigator.geolocation.getCurrentPosition(ok,bad,{enableHighAccuracy:true,timeout:15000,maximumAge:30000});}
+b.onclick=go;go();})();""" + "</script>")
+        return layout("/durak", body, "Yakınımdaki duraklar · Filo Takip")
+
+    def hat_map_html(hat, route, conn):
+        """Hat güzergâhı (durak sırasına göre) + canlı araçlar için mini harita verisi."""
+        pos = {d: (la, lo) for d, _a, la, lo in stop_coords()}
+        pts = [[round(pos[d][0], 5), round(pos[d][1], 5), a or d, s] for s, d, a in route if d in pos]
+        if len(pts) < 2:
+            return ""
+        geo = {"hat": hat, "p": pts}
+        return ('<div class="vmapwrap"><div class="hmap" style="height:300px;border-radius:16px;overflow:hidden;border:1px solid var(--line)" '
+                f'data-geo="{esc(json.dumps(geo, ensure_ascii=False), True)}"></div></div>')
+
+    HMAP_JS = r"""(function(){function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
+document.querySelectorAll('.hmap').forEach(function(el){if(el._m)return;var g=JSON.parse(el.getAttribute('data-geo')),map=L.map(el,{preferCanvas:true});el._m=map;
+ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
+ var ll=g.p.map(function(x){return [x[0],x[1]];});L.polyline(ll,{color:'#c8102e',weight:4,opacity:.85}).addTo(map);
+ g.p.forEach(function(x,i){if(i%3===0||i===0||i===g.p.length-1)L.circleMarker([x[0],x[1]],{radius:4,color:'#fff',weight:1.5,fillColor:'#1d4ed8',fillOpacity:1}).addTo(map).bindTooltip(esc(x[2]));});
+ map.fitBounds(ll,{padding:[18,18]});var lay=L.layerGroup().addTo(map);
+ function ok(h){h=String(h||'');return h===g.hat||h.indexOf(g.hat+'_')===0||h.indexOf(g.hat+' ')===0;}
+ function load(){if(document.hidden)return;fetch('/api/araclar?saat=1').then(function(r){return r.json()}).then(function(j){lay.clearLayers();
+  (j.araclar||[]).filter(function(a){return ok(a.h)&&a.age<30;}).forEach(function(a){L.circleMarker([a.la,a.lo],{radius:8,color:'#fff',weight:2,fillColor:'#15803d',fillOpacity:1}).addTo(lay).bindTooltip(esc(a.f||a.p)+' · '+esc(a.p)+(a.d?' → '+esc(a.d):''));});}).catch(function(){});}
+ load();setInterval(load,15000);});})();"""
+
     def page_bolge(g):
         q = (g("q") or "").strip()
         form = ('<form class="card form" method="get" action="/bolge"><div class="field grow"><label>Bölge, mahalle veya durak adı</label>'
@@ -2100,7 +2195,7 @@ function loadStops(){
   (j.duraklar||[]).forEach(function(s){
    var m=L.circleMarker([s.la,s.lo],{radius:7,color:'#fff',weight:2,fillColor:'#1d4ed8',fillOpacity:.95,pane:'markerPane'});
    var hl=s.h.map(function(h){return '<a href="/hat?no='+encodeURIComponent(h)+'">'+esc(h)+'</a>';}).join(' · ');
-   m.bindPopup('<b>'+esc(s.ad||'Durak')+'</b> &middot; '+esc(s.d)+(s.adres?'<br>'+esc(s.adres):'')+'<br>Hatlar: '+(hl||'-')+'<br><a href="/durak?no='+encodeURIComponent(s.d)+'">Yaklaşan araçlar</a><br><span style="opacity:.7;font-size:.8em">'+(s.n>0?'Konum araç verisinden tahminidir ('+s.n+' geçiş)':'Resmi durak konumu')+'</span>');
+   m.bindPopup('<b>'+esc(s.ad||'Durak')+'</b> &middot; '+esc(s.d)+(s.adres?'<br>'+esc(s.adres):'')+'<br>Hatlar: '+(hl||'-')+'<br><a href="/durak?no='+encodeURIComponent(s.d)+'">Yaklaşan araçlar</a> · <a href="/bolge?q='+encodeURIComponent(s.ad||s.d)+'">Bölgedeki hatlar</a><br><span style="opacity:.7;font-size:.8em">'+(s.n>0?'Konum araç verisinden tahminidir ('+s.n+' geçiş)':'Resmi durak konumu')+'</span>');
    m.addTo(stopLayer);
   });
  }).catch(function(){});
@@ -2365,6 +2460,10 @@ load();loadStops();setInterval(function(){if(!document.hidden)load();},15000);
                     return self._send(page_hatlar(g))
                 if u.path == "/api/ara_hizli":
                     return self._send(api_ara_hizli(g), "application/json; charset=utf-8")
+                if u.path == "/api/yakin":
+                    return self._send(api_yakin(g), "application/json; charset=utf-8")
+                if u.path == "/yakin":
+                    return self._send(page_yakin(g))
                 if u.path == "/bolge":
                     return self._send(page_bolge(g))
                 if u.path == "/durak":
