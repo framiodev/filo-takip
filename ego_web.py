@@ -422,6 +422,43 @@ def make_handler(E):
 
     SUN_JS = "(function(){var D=document.documentElement,LA=__LA__,LO=__LO__;\nfunction st(){var d=new Date(),r=Math.PI/180,N=Math.floor((Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate())-Date.UTC(d.getUTCFullYear(),0,0))/864e5);\nvar g=2*Math.PI/365*(N-.5),eq=229.18*(.000075+.001868*Math.cos(g)-.032077*Math.sin(g)-.014615*Math.cos(2*g)-.040849*Math.sin(2*g));\nvar dc=.006918-.399912*Math.cos(g)+.070257*Math.sin(g)-.006758*Math.cos(2*g)+.000907*Math.sin(2*g)-.002697*Math.cos(3*g)+.00148*Math.sin(3*g);\nvar c=Math.cos(90.833*r)/(Math.cos(LA*r)*Math.cos(dc))-Math.tan(LA*r)*Math.tan(dc);if(c>1)return{rise:1e9,set:-1e9};if(c<-1)return{rise:-1e9,set:1e9};\nvar ha=Math.acos(c)/r;return{rise:720-4*(LO+ha)-eq+180,set:720-4*(LO-ha)-eq+180};}\nfunction hm(m){m=((Math.round(m)%1440)+1440)%1440;return('0'+Math.floor(m/60)).slice(-2)+':'+('0'+m%60).slice(-2);}\nfunction pref(){try{return localStorage.getItem('tema')||'auto';}catch(e){return 'auto';}}\nfunction apply(){var m=pref(),s=st(),n=new Date(),t=(n.getUTCHours()*60+n.getUTCMinutes()+180)%1440,day=m==='auto'?(t>=s.rise-20&&t<s.set+20):m==='day';\nD.setAttribute('data-mode',day?'day':'night');var i=document.getElementById('sunico');\nif(i){i.textContent=day?'☀':'☾';document.getElementById('suntx').innerHTML='<b>'+hm(s.rise)+'</b> ↑ <b>'+hm(s.set)+'</b> ↓';\ndocument.getElementById('sunbtn').title='Tema: '+({auto:'otomatik (güneşe göre)',day:'gündüz',night:'gece'})[m]+' — değiştirmek için tıkla';\ndocument.getElementById('sunm').textContent=({auto:'Oto',day:'Gün',night:'Gece'})[m];}}\nwindow.__temaDon=function(){var o=['auto','day','night'],m=o[(o.indexOf(pref())+1)%3];try{localStorage.setItem('tema',m);}catch(e){}apply();};\napply();document.addEventListener('DOMContentLoaded',function(){apply();var b=document.getElementById('sunbtn');if(b)b.onclick=window.__temaDon;});setInterval(apply,60000);})();"
 
+
+    HS_CSS = (".sres{position:absolute;left:0;right:0;top:calc(100% + 8px);background:var(--card);border:1px solid var(--line);border-radius:18px;"
+              "box-shadow:0 14px 36px rgba(0,0,0,.22);max-height:min(72vh,540px);overflow:auto;z-index:60;padding:6px;text-align:left}"
+              ".sres[hidden]{display:none}.sres .sh{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:10px 10px 4px;font-weight:700}"
+              ".sres .si{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:46px;padding:8px 10px;border-radius:12px;color:var(--ink);text-decoration:none;line-height:1.25}"
+              ".sres .si:hover,.sres .si.on{background:var(--chip)}.sres .si small{color:var(--muted);display:block;width:100%;font-size:.78rem}"
+              ".sres .tg{display:inline-block;min-width:34px;text-align:center;padding:2px 8px;border-radius:999px;background:var(--accent);color:var(--onacc);font-weight:700;font-size:.8rem}"
+              ".sres .bo{border:1px dashed var(--line)}.sres .em{padding:14px 10px;color:var(--muted)}"
+              "@media(max-width:760px){body:not(.mapmode) .bar{flex-wrap:wrap;row-gap:10px}body:not(.mapmode) .hsearch{order:9;flex:1 0 100%;max-width:none}"
+              "body:not(.mapmode) .hsearch input{height:46px;font-size:1rem}.sres{max-height:62vh}"
+              ".sres .si{min-height:52px}}")
+    HSEARCH_JS = "<script>" + r"""(function(){var f=document.getElementById('hs'),i=document.getElementById('hsq'),r=document.getElementById('sres');if(!f||!i||!r)return;
+var tm=0,seq=0,sel=-1,cache={};
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]});}
+function enc(s){return encodeURIComponent(s);}
+function render(j){var h='',n=0;
+ if(j.araclar&&j.araclar.length){h+='<div class="sh">Araçlar</div>';j.araclar.forEach(function(a){n++;h+='<a class="si" href="/ara?q='+enc(a.f||a.p)+'"><span class="tg">'+esc(a.f||'—')+'</span><b>'+esc(a.p)+'</b><small>Son hat: '+esc(a.h||'-')+'</small></a>';});}
+ if(j.bolge){n++;h+='<div class="sh">Bölge</div><a class="si bo" href="/bolge?q='+enc(j.q)+'"><b>“'+esc(j.q)+'” çevresi</b><small>'+j.bolge.n+' durak · '+j.bolge.nh+' hat: '+esc(j.bolge.h.join(', '))+(j.bolge.nh>j.bolge.h.length?' …':'')+'</small></a>';}
+ if(j.hatlar&&j.hatlar.length){h+='<div class="sh">Hatlar</div>';j.hatlar.forEach(function(x){n++;h+='<a class="si" href="/hat?no='+enc(x.h)+'"><span class="tg">'+esc(x.h)+'</span><span>'+esc(x.ad)+'</span></a>';});}
+ if(j.duraklar&&j.duraklar.length){h+='<div class="sh">Duraklar</div>';j.duraklar.forEach(function(x){n++;h+='<a class="si" href="/durak?no='+enc(x.d)+'"><b>'+esc(x.ad)+'</b><small>'+esc(x.d)+' · '+(x.n?esc(x.h.join(', '))+(x.n>x.h.length?' …':''):'hat bilgisi yok')+'</small></a>';});}
+ if(!n)h='<div class="em">Sonuç yok. Araç için filo kodu/plaka, hat için numara, durak veya bölge için ad yazın.</div>';
+ r.innerHTML=h;r.hidden=false;sel=-1;}
+function go(q){q=q.trim();if(q.length<2){r.hidden=true;return;}
+ if(cache[q]){render(cache[q]);return;}var my=++seq;
+ fetch('/api/ara_hizli?q='+enc(q),{credentials:'same-origin'}).then(function(x){return x.json()}).then(function(j){if(my!==seq)return;cache[q]=j;render(j);}).catch(function(){});}
+i.addEventListener('input',function(){clearTimeout(tm);tm=setTimeout(function(){go(i.value);},140);});
+i.addEventListener('focus',function(){if(i.value.trim().length>=2)go(i.value);});
+function items(){return r.querySelectorAll('a.si');}
+function mark(){var a=items();for(var k=0;k<a.length;k++)a[k].classList.toggle('on',k===sel);if(a[sel])a[sel].scrollIntoView({block:'nearest'});}
+i.addEventListener('keydown',function(e){var a=items();
+ if(e.key==='ArrowDown'){if(!r.hidden&&a.length){e.preventDefault();sel=Math.min(a.length-1,sel+1);mark();}}
+ else if(e.key==='ArrowUp'){if(!r.hidden&&a.length){e.preventDefault();sel=Math.max(0,sel-1);mark();}}
+ else if(e.key==='Escape'){r.hidden=true;}
+ else if(e.key==='Enter'&&!r.hidden&&a.length){e.preventDefault();location.href=(a[sel>=0?sel:0]).getAttribute('href');}});
+document.addEventListener('click',function(e){if(!f.contains(e.target))r.hidden=true;});
+})();""" + "</script>"
+
     def layout(active, body, title="EGO Filo Takip", picker=False, mapmode=False):
         if picker:
             nav, chip, status = "", "", ""
@@ -438,8 +475,8 @@ def make_handler(E):
             hs = ('<form class="hsearch" onsubmit="return false"><input id="q" placeholder="Filo kodu, plaka, hat ara…" '
                   'autocomplete="off" aria-label="Ara"></form>')
         else:
-            hs = ('<form class="hsearch" method="get" action="/ara"><input name="q" placeholder="Filo kodu veya plaka ara…" '
-                  'autocomplete="off" aria-label="Ara" required></form>')
+            hs = ('<form class="hsearch" method="get" action="/ara" id="hs"><input name="q" id="hsq" placeholder="Araç, hat, durak veya bölge ara…" '
+                  'autocomplete="off" aria-label="Ara" required><div class="sres" id="sres" hidden></div></form>')
         return localize(
             '<!doctype html><html lang="tr"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
@@ -450,11 +487,11 @@ def make_handler(E):
             '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
             '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Pixelify+Sans:wght@400;600&display=swap&subset=latin-ext">'
             "<script>" + SUN_JS.replace("__LA__", str(city_meta()["merkez"][0])).replace("__LO__", str(city_meta()["merkez"][1])) + "</script>"
-            f"<style>{CSS}{brand_css()}</style></head><body{' class=\"mapmode\"' if mapmode else ''}>"
+            f"<style>{CSS}{brand_css()}{HS_CSS}</style></head><body{' class=\"mapmode\"' if mapmode else ''}>"
             '<header><div class="bar"><a class="brand" href="/"><span class="logo">🚌</span>Filo Takip</a>'
             f"{hs}{chip}{sunchip}<nav>{nav}</nav>{status}</div></header><main>{body}</main>"
             "<footer>Resmi olmayan, ticari amaç gütmeyen kişisel arşiv. Veri: " + city_meta()["kaynak"] + ". "
-            "Durak saatleri gözlemler arası ara değerle tahmin edilir.</footer>" + SOFT_REFRESH + "</body></html>"
+            "Durak saatleri gözlemler arası ara değerle tahmin edilir.</footer>" + SOFT_REFRESH + ("" if (picker or mapmode) else HSEARCH_JS) + "</body></html>"
         )
 
     # ------------------------------------------------------------------ Araç sorgula
@@ -1760,6 +1797,106 @@ document.querySelectorAll('.vmap').forEach(function(el){
             conn.close()
         return json.dumps({"duraklar": out}, ensure_ascii=False)
 
+
+    # ------------------------------------------------------------------ Hızlı arama (hat / durak / bölge / araç)
+    _TRF = str.maketrans({"İ": "i", "I": "i", "ı": "i", "Ş": "s", "ş": "s", "Ç": "c", "ç": "c", "Ğ": "g", "ğ": "g",
+                          "Ö": "o", "ö": "o", "Ü": "u", "ü": "u"})
+
+    def fold(s):
+        return str(s or "").translate(_TRF).lower().strip()
+
+    _idx_cache = {}
+
+    def search_index():
+        """(duraklar[(no, ad, katlı)], hatlar[(hat, ad, katlı)], durak->hatlar) — şehir başına 10 dk önbellek."""
+        ck = cur_city()
+        hit = _idx_cache.get(ck)
+        if hit and time.time() - hit[0] < 600:
+            return hit[1]
+        conn = E.connect()
+        try:
+            if ck in CITY_DB:
+                st = conn.execute("SELECT durak, ad FROM stops_geo WHERE ad<>''").fetchall()
+            else:
+                st = conn.execute("SELECT durak, MIN(ad) FROM line_route WHERE ad<>'' GROUP BY durak").fetchall()
+            hl = conn.execute("SELECT hat, ad FROM lines").fetchall()
+            dh = {}
+            for d, h in conn.execute("SELECT durak, hat FROM line_stops"):
+                dh.setdefault(d, []).append(h)
+        finally:
+            conn.close()
+        res = ([(d, a, fold(a)) for d, a in st], [(h, a or "", fold(h + " " + (a or ""))) for h, a in hl], dh)
+        _idx_cache[ck] = (time.time(), res)
+        return res
+
+    def match_stops(q, limit=300):
+        qf = fold(q)
+        st, _hl, dh = search_index()
+        out = [(d, a, 0 if f.startswith(qf) else 1) for d, a, f in st if qf in f or d == q]
+        out.sort(key=lambda x: (x[2], -len(dh.get(x[0], [])), x[1]))
+        return out[:limit]
+
+    def api_ara_hizli(g):
+        q = (g("q") or "").strip()
+        if len(q) < 2:
+            return json.dumps({"q": q, "bos": True}, ensure_ascii=False)
+        qf = fold(q)
+        _st, hl, dh = search_index()
+        hats = [(h, a) for h, a, f in hl if h.lower() == q.lower() or f.startswith(qf) or (len(qf) > 2 and qf in f)]
+        hats.sort(key=lambda x: (0 if x[0].lower() == q.lower() else 1 if fold(x[0]).startswith(qf) else 2, natural_key(x[0])))
+        ms = match_stops(q)
+        duraklar = [{"d": d, "ad": a, "h": sorted(dh.get(d, []), key=natural_key)[:6], "n": len(dh.get(d, []))} for d, a, _r in ms[:8]]
+        bolge = None
+        if len(ms) >= 2:
+            hs = {}
+            for d, _a, _r in ms:
+                for h in dh.get(d, []):
+                    hs[h] = hs.get(h, 0) + 1
+            bolge = {"q": q, "n": len(ms), "h": sorted(hs, key=natural_key)[:14], "nh": len(hs)}
+        araclar = []
+        if any(c.isdigit() for c in q):
+            nq = E.norm(q)
+            conn = E.connect()
+            try:
+                for pl, ar, ht in conn.execute(
+                        "SELECT plaka, arac_no, hat FROM arac_son WHERE plaka LIKE ? OR arac_no=? OR arac_no LIKE ? ORDER BY ts DESC LIMIT 5",
+                        (nq + "%", q, q + "%")):
+                    araclar.append({"p": E.pretty_plate(pl), "f": ar or "", "h": ht})
+            except Exception:
+                pass
+            finally:
+                conn.close()
+        return json.dumps({"q": q, "hatlar": [{"h": h, "ad": a} for h, a in hats[:8]], "duraklar": duraklar,
+                           "bolge": bolge, "araclar": araclar}, ensure_ascii=False)
+
+    def page_bolge(g):
+        q = (g("q") or "").strip()
+        form = ('<form class="card form" method="get" action="/bolge"><div class="field grow"><label>Bölge, mahalle veya durak adı</label>'
+                f'<input name="q" value="{esc(q, True)}" placeholder="ör. Konutkent" autocomplete="off" autofocus></div>'
+                '<button class="btn">Ara</button></form>')
+        body = "<h1>Bölge arama</h1>" + form
+        if len(q) < 2:
+            return layout("/ara", body + note("Bir bölge, mahalle ya da durak adı yazın; adında geçen tüm durakları ve oradan geçen hatları listelerim.", "info"), "Bölge · Filo Takip")
+        ms = match_stops(q, 400)
+        if not ms:
+            return layout("/ara", body + '<div class="card empty">Bu adla eşleşen durak yok.</div>', "Bölge · Filo Takip")
+        _st, hl, dh = search_index()
+        hname = {h: a for h, a, _f in hl}
+        cnt = {}
+        for d, _a, _r in ms:
+            for h in dh.get(d, []):
+                cnt[h] = cnt.get(h, 0) + 1
+        chips = " ".join(f'<a class="chip" href="/hat?no={urllib.parse.quote(h)}" title="{esc(hname.get(h, ""), True)}">{esc(h)}</a>'
+                         for h in sorted(cnt, key=natural_key))
+        body += (f'<div class="card"><div class="vhead"><b>“{esc(q)}” çevresi</b></div><div class="muted" style="margin:4px 0 8px">'
+                 f'{len(ms)} durak · {len(cnt)} hat</div><div class="chips">{chips or "—"}</div></div>')
+        rows = "".join(
+            f'<tr><td><a href="/durak?no={esc(d, True)}"><b>{esc(a)}</b></a><div class="muted">{esc(d)}</div></td>'
+            '<td>' + " ".join(f'<a class="chip" href="/hat?no={urllib.parse.quote(h)}">{esc(h)}</a>' for h in sorted(dh.get(d, []), key=natural_key)[:10]) + '</td></tr>'
+            for d, a, _r in ms)
+        body += f'<div class="card"><table class="stbl"><tbody>{rows}</tbody></table></div>'
+        return layout("/ara", body, "Bölge · Filo Takip")
+
     MAP_JS = """
 (function(){
 var map=L.map('map',{preferCanvas:true}).setView(__MERKEZ__);
@@ -2226,6 +2363,10 @@ load();loadStops();setInterval(function(){if(!document.hidden)load();},15000);
                     return self._redirect("/sehir?yakinda=" + urllib.parse.quote(sec))
                 if u.path == "/hatlar":
                     return self._send(page_hatlar(g))
+                if u.path == "/api/ara_hizli":
+                    return self._send(api_ara_hizli(g), "application/json; charset=utf-8")
+                if u.path == "/bolge":
+                    return self._send(page_bolge(g))
                 if u.path == "/durak":
                     return self._send(page_durak_izmir(g) if cur_city() == "izmir" else page_durak(g))
                 if u.path == "/hat":
