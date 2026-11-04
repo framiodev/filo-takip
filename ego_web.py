@@ -211,6 +211,7 @@ body.mapmode #frwrap #map{position:absolute;inset:0;height:100%!important;min-he
 body.mapmode #frwrap #panel{top:12px;right:12px;bottom:12px;background:var(--pill);backdrop-filter:blur(8px)}
 @media(max-width:700px){body.mapmode #panel{top:auto;left:8px;right:8px;bottom:8px;max-height:56%}.fr-count{bottom:auto;top:56px;left:12px}.fr-filters{top:12px}}
 body.mapmode .fr-count{left:auto;right:12px;bottom:12px}
+@media(max-width:700px){body.mapmode .fr-count{bottom:auto;top:12px;left:auto;right:12px;height:auto;width:auto;max-width:calc(100% - 150px)}}
 body.mapmode #panel[style*="flex"]~.fr-count{display:none}
 body.mapmode .leaflet-control-zoom{margin-top:60px}
 """
